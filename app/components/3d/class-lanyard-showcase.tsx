@@ -7,6 +7,7 @@ import {
    RotateCw,
    Search,
    Sparkles,
+   UserCheck,
    Users,
 } from "lucide-react";
 import { TeamLanyardRail } from "./team-lanyard-rail";
@@ -14,6 +15,11 @@ import {
    INITIAL_PPLG1_STUDENTS,
    type ClassStudent,
 } from "@/app/types/class-system";
+import { getSupabaseBrowserClient } from "@/lib/supabase/client";
+import { StudentCrudModal } from "../admin/student-crud-modal";
+import { useClassAuth } from "../auth/class-auth-provider";
+
+const STUDENTS_STORAGE_KEY = "pplg1-students-v1";
 
 export interface ClassLanyardShowcaseProps {
    students?: ClassStudent[];
@@ -49,39 +55,212 @@ function resolveBatchForAbsen(absen: number): FilterMode {
 }
 
 export function ClassLanyardShowcase({
-   students = INITIAL_PPLG1_STUDENTS,
+   students: initialStudentsProp = INITIAL_PPLG1_STUDENTS,
    className = "",
    onEditStudent,
 }: ClassLanyardShowcaseProps) {
+   const { isAdmin, isSupabaseConnected } = useClassAuth();
+
+   const [studentList, setStudentList] =
+      React.useState<ClassStudent[]>(initialStudentsProp);
    const [filter, setFilter] = React.useState<FilterMode>("batch-1");
    const [activeIdx, setActiveIdx] = React.useState<number | null>(null);
    const [flippedIdx, setFlippedIdx] = React.useState<number | null>(null);
    const [showAbsenGrid, setShowAbsenGrid] = React.useState<boolean>(true);
 
+   // State Modal CRUD Siswa (Fase 15)
+   const [isCrudModalOpen, setIsCrudModalOpen] = React.useState(false);
+   const [crudTargetStudent, setCrudTargetStudent] =
+      React.useState<ClassStudent | null>(null);
+   const [isSyncing, setIsSyncing] = React.useState(false);
+
+   // 1. Muat data 22 siswa dari Supabase (jika terhubung) atau dari localStorage
+   React.useEffect(() => {
+      let isMounted = true;
+
+      const loadStudents = async () => {
+         const supabase = getSupabaseBrowserClient();
+
+         if (supabase) {
+            const { data, error } = await supabase
+               .from("students")
+               .select("*")
+               .order("absen", { ascending: true });
+
+            if (!error && Array.isArray(data) && data.length > 0 && isMounted) {
+               const mapped: ClassStudent[] = data.map((row) => ({
+                  id: String(row.id),
+                  absen: Number(row.absen),
+                  name: String(row.name),
+                  role: String(row.role),
+                  team: String(
+                     row.team ??
+                        `XII PPLG 1 · #${String(row.absen).padStart(2, "0")}`
+                  ),
+                  division: (row.division as ClassStudent["division"]) ?? "Frontend",
+                  image: String(row.image),
+                  bio: String(row.bio ?? ""),
+                  tags: Array.isArray(row.tags) ? row.tags : [],
+                  links: Array.isArray(row.links) ? row.links : [],
+                  tone: (Number(row.tone) as 1 | 2 | 3 | 4 | 5) || 1,
+                  drop: Number(row.drop ?? 8),
+               }));
+               setStudentList(mapped);
+               try {
+                  window.localStorage.setItem(
+                     STUDENTS_STORAGE_KEY,
+                     JSON.stringify(mapped)
+                  );
+               } catch {
+                  // Abaikan
+               }
+               return;
+            }
+         }
+
+         // Fallback localStorage apabila tabel Supabase masih kosong atau belum dikonfigurasi
+         try {
+            const raw = window.localStorage.getItem(STUDENTS_STORAGE_KEY);
+            if (raw && isMounted) {
+               const parsed = JSON.parse(raw) as ClassStudent[];
+               if (Array.isArray(parsed) && parsed.length > 0) {
+                  setStudentList(parsed);
+               }
+            }
+         } catch {
+            // Abaikan
+         }
+      };
+
+      loadStudents();
+      return () => {
+         isMounted = false;
+      };
+   }, []);
+
+   const persistLocalStudents = (next: ClassStudent[]) => {
+      const sorted = [...next].sort((a, b) => a.absen - b.absen);
+      setStudentList(sorted);
+      try {
+         window.localStorage.setItem(
+            STUDENTS_STORAGE_KEY,
+            JSON.stringify(sorted)
+         );
+      } catch {
+         // Abaikan
+      }
+   };
+
+   // 2. Fungsi Simpan / Update Siswa (Supabase + Local)
+   const handleSaveStudent = async (
+      updated: ClassStudent,
+      isNew: boolean
+   ): Promise<void> => {
+      setIsSyncing(true);
+      const next = isNew
+         ? [...studentList, updated]
+         : studentList.map((s) => (s.id === updated.id ? updated : s));
+      persistLocalStudents(next);
+
+      const supabase = getSupabaseBrowserClient();
+      if (supabase) {
+         await supabase.from("students").upsert(
+            {
+               id: updated.id,
+               absen: updated.absen,
+               name: updated.name,
+               role: updated.role,
+               team: updated.team ?? `XII PPLG 1 · #${String(updated.absen).padStart(2, "0")}`,
+               division: updated.division,
+               image: updated.image,
+               bio: updated.bio ?? "",
+               tags: updated.tags ?? [],
+               links: updated.links ?? [],
+               tone: updated.tone ?? 1,
+               drop: updated.drop ?? 8,
+               updated_at: new Date().toISOString(),
+            },
+            { onConflict: "id" }
+         );
+      }
+      setIsSyncing(false);
+   };
+
+   // 3. Fungsi Hapus Siswa (Supabase + Local)
+   const handleDeleteStudent = async (studentId: string): Promise<void> => {
+      setIsSyncing(true);
+      const next = studentList.filter((s) => s.id !== studentId);
+      persistLocalStudents(next);
+      setActiveIdx(null);
+      setFlippedIdx(null);
+
+      const supabase = getSupabaseBrowserClient();
+      if (supabase) {
+         await supabase.from("students").delete().eq("id", studentId);
+      }
+      setIsSyncing(false);
+   };
+
+   // 4. Fungsi Sinkronisasi Massal 22 Siswa ke Supabase
+   const handleSyncAllToSupabase = async (): Promise<void> => {
+      const supabase = getSupabaseBrowserClient();
+      if (!supabase) return;
+      setIsSyncing(true);
+      const payload = studentList.map((s) => ({
+         id: s.id,
+         absen: s.absen,
+         name: s.name,
+         role: s.role,
+         team: s.team ?? `XII PPLG 1 · #${String(s.absen).padStart(2, "0")}`,
+         division: s.division,
+         image: s.image,
+         bio: s.bio ?? "",
+         tags: s.tags ?? [],
+         links: s.links ?? [],
+         tone: s.tone ?? 1,
+         drop: s.drop ?? 8,
+         updated_at: new Date().toISOString(),
+      }));
+      await supabase.from("students").upsert(payload, { onConflict: "id" });
+      setIsSyncing(false);
+   };
+
+   // 5. Reset ke 22 Siswa Default
+   const handleResetDefaultStudents = async (): Promise<void> => {
+      setStudentList(INITIAL_PPLG1_STUDENTS);
+      try {
+         window.localStorage.removeItem(STUDENTS_STORAGE_KEY);
+      } catch {
+         // Abaikan
+      }
+   };
+
    const filteredStudents = React.useMemo(() => {
       switch (filter) {
          case "batch-1":
-            return students.filter(
+            return studentList.filter(
                (s: ClassStudent) => s.absen >= 1 && s.absen <= 8
             );
          case "batch-2":
-            return students.filter(
+            return studentList.filter(
                (s: ClassStudent) => s.absen >= 9 && s.absen <= 15
             );
          case "batch-3":
-            return students.filter(
+            return studentList.filter(
                (s: ClassStudent) => s.absen >= 16 && s.absen <= 22
             );
          case "Frontend":
          case "Backend":
          case "UI/UX & Creative":
          case "Game & Mobile":
-            return students.filter((s: ClassStudent) => s.division === filter);
+            return studentList.filter(
+               (s: ClassStudent) => s.division === filter
+            );
          case "all":
          default:
-            return students;
+            return studentList;
       }
-   }, [students, filter]);
+   }, [studentList, filter]);
 
    const activeStudent = React.useMemo(() => {
       if (activeIdx === null) return null;
@@ -108,7 +287,7 @@ export function ClassLanyardShowcase({
          }
 
          const targetBatch = resolveBatchForAbsen(targetAbsen);
-         const nextList = students.filter((s) => {
+         const nextList = studentList.filter((s) => {
             if (targetBatch === "batch-1") return s.absen >= 1 && s.absen <= 8;
             if (targetBatch === "batch-2") return s.absen >= 9 && s.absen <= 15;
             return s.absen >= 16 && s.absen <= 22;
@@ -119,10 +298,10 @@ export function ClassLanyardShowcase({
          setFlippedIdx(null);
          setActiveIdx(nextIdx !== -1 ? nextIdx : null);
       },
-      [filteredStudents, students]
+      [filteredStudents, studentList]
    );
 
-   // Dengarkan event pencarian dari Command Palette (Ctrl + K)
+   // Dengarkan event pencarian dari Command Palette (Ctrl + K) atau Galeri Project
    React.useEffect(() => {
       const handleSelectStudentEvent = (event: Event) => {
          const custom = event as CustomEvent<{
@@ -131,6 +310,15 @@ export function ClassLanyardShowcase({
          }>;
          if (custom.detail?.absen) {
             handleJumpToAbsen(custom.detail.absen);
+            return;
+         }
+         if (custom.detail?.studentId) {
+            const target = studentList.find(
+               (s) => s.id === custom.detail.studentId
+            );
+            if (target) {
+               handleJumpToAbsen(target.absen);
+            }
          }
       };
 
@@ -140,7 +328,15 @@ export function ClassLanyardShowcase({
             "pplg1:select-student",
             handleSelectStudentEvent
          );
-   }, [handleJumpToAbsen]);
+   }, [handleJumpToAbsen, studentList]);
+
+   const openEditModalForStudent = (student: ClassStudent | null) => {
+      if (onEditStudent && student) {
+         onEditStudent(student);
+      }
+      setCrudTargetStudent(student);
+      setIsCrudModalOpen(true);
+   };
 
    return (
       <div className={`w-full flex flex-col gap-4 ${className}`}>
@@ -153,7 +349,7 @@ export function ClassLanyardShowcase({
                   <div className="inline-flex items-center gap-2 text-xs font-medium text-sky-600 dark:text-sky-300">
                      <Users className="h-3.5 w-3.5 shrink-0" />
                      <span className="mono-tabular tracking-widest uppercase">
-                        SECTION 02 · DIREKTORI INTERAKTIF 22 ID CARD 3D
+                        SECTION 02 · DIREKTORI INTERAKTIF {studentList.length} ID CARD 3D
                      </span>
                   </div>
                   <h2 className="mt-1.5 text-xl font-bold tracking-tight text-foreground sm:text-2xl">
@@ -162,19 +358,33 @@ export function ClassLanyardShowcase({
                   <p className="mt-1 text-xs sm:text-sm text-muted-foreground">
                      Pilih rel absen, filter berdasarkan 4 divisi teknis, atau klik nomor absen{" "}
                      <span className="mono-tabular font-semibold text-foreground">
-                        01–22
+                        01–{String(studentList.length).padStart(2, "0")}
                      </span>{" "}
                      untuk menyorot dan membalik ID Card 3D siswa.
                   </p>
                </div>
 
                <div className="flex flex-wrap items-center gap-2 self-start lg:self-auto">
+                  {isAdmin && (
+                     <button
+                        type="button"
+                        onClick={() => openEditModalForStudent(activeStudent)}
+                        className="obsidian-pill inline-flex items-center gap-1.5 rounded-xl border-emerald-400/45 bg-emerald-500/15 px-3 py-2 text-xs font-semibold text-emerald-700 dark:text-emerald-200 whitespace-nowrap">
+                        <UserCheck className="h-3.5 w-3.5" />
+                        <span>Kelola 22 Siswa (CRUD)</span>
+                     </button>
+                  )}
+
                   <button
                      type="button"
                      onClick={() => setShowAbsenGrid((prev) => !prev)}
                      className="obsidian-pill inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-semibold text-foreground transition hover:border-sky-400/45 whitespace-nowrap">
                      <Layers className="h-3.5 w-3.5 text-sky-500 dark:text-sky-300" />
-                     <span>{showAbsenGrid ? "Sembunyikan Absen" : "Pilih Absen 01–22"}</span>
+                     <span>
+                        {showAbsenGrid
+                           ? "Sembunyikan Absen"
+                           : `Pilih Absen 01–${String(studentList.length).padStart(2, "0")}`}
+                     </span>
                   </button>
 
                   <button
@@ -245,7 +455,7 @@ export function ClassLanyardShowcase({
                      role="group"
                      aria-label="Pilih nomor absen 01 sampai 22"
                      className="grid grid-cols-11 gap-1.5 sm:grid-cols-11 md:grid-cols-22">
-                     {students.map((student) => {
+                     {studentList.map((student) => {
                         const absenCode = String(student.absen).padStart(2, "0");
                         const isCurrentlyFocused =
                            activeStudent?.absen === student.absen;
@@ -329,13 +539,13 @@ export function ClassLanyardShowcase({
                         </a>
                      )}
 
-                     {onEditStudent && (
+                     {isAdmin && (
                         <button
                            type="button"
-                           onClick={() => onEditStudent(activeStudent)}
+                           onClick={() => openEditModalForStudent(activeStudent)}
                            className="obsidian-pill inline-flex items-center gap-1.5 rounded-lg border-emerald-400/45 bg-emerald-500/20 px-3 py-1.5 text-xs font-semibold text-emerald-700 dark:text-emerald-200 whitespace-nowrap">
                            <Sparkles className="h-3.5 w-3.5" />
-                           <span>Edit Siswa</span>
+                           <span>Edit ID Card #{String(activeStudent.absen).padStart(2, "0")}</span>
                         </button>
                      )}
 
@@ -372,6 +582,22 @@ export function ClassLanyardShowcase({
                show: "Pilih Siswa",
             }}
             className="obsidian-surface rounded-2xl border border-[var(--color-border)]"
+         />
+
+         {/* =================================================================
+          3. MODAL CRUD 22 SISWA (TERBUKA SAAT ADMIN AKTIF)
+         ================================================================= */}
+         <StudentCrudModal
+            isOpen={isCrudModalOpen}
+            students={studentList}
+            initialSelectedStudent={crudTargetStudent}
+            isSupabaseConnected={isSupabaseConnected}
+            isSyncing={isSyncing}
+            onClose={() => setIsCrudModalOpen(false)}
+            onSaveStudent={handleSaveStudent}
+            onDeleteStudent={handleDeleteStudent}
+            onSyncAllToSupabase={handleSyncAllToSupabase}
+            onResetDefaultStudents={handleResetDefaultStudents}
          />
       </div>
    );

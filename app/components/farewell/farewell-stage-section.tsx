@@ -9,6 +9,7 @@ import {
    MessageSquareQuote,
    Music,
    RotateCcw,
+   Settings2,
    ShieldCheck,
    Sparkles,
    Unlock,
@@ -16,9 +17,13 @@ import {
 import {
    INITIAL_FAREWELL_DATA,
    type FarewellBoxPayload,
+   type FarewellMemoryPhoto,
+   type FarewellQuote,
 } from "../../types/class-system";
+import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 import { FarewellGiftBox3D } from "../3d/farewell-gift-box-3d";
 import { MemoryPhotoCube3D, VinylDisc3D } from "../3d/memory-props-3d";
+import { FarewellCrudModal } from "../admin/farewell-crud-modal";
 import { useClassAuth } from "../auth/class-auth-provider";
 
 const FAREWELL_STORAGE_KEY = "pplg1-farewell-capsule-v1";
@@ -71,36 +76,217 @@ export function FarewellStageSection({
    initialCapsuleData = INITIAL_FAREWELL_DATA,
    onSyncCapsuleData,
 }: FarewellStageSectionProps) {
-   const { isAdmin, openLoginModal } = useClassAuth();
+   const { isAdmin, isSupabaseConnected, openLoginModal } = useClassAuth();
 
    const [capsuleData, setCapsuleData] =
       React.useState<FarewellBoxPayload>(initialCapsuleData);
    const [capsuleVersion, setCapsuleVersion] = React.useState(0);
    const [activeTrackIndex, setActiveTrackIndex] = React.useState(0);
    const [lastSavedAt, setLastSavedAt] = React.useState<string | null>(null);
+   const [isCrudModalOpen, setIsCrudModalOpen] = React.useState(false);
+   const [isSyncing, setIsSyncing] = React.useState(false);
 
-   // Muat data kapsul perpisahan yang tersimpan lokal jika ada
+   // 1. Muat data kapsul perpisahan dari Supabase (farewell_box, farewell_quotes, memories) atau localStorage
    React.useEffect(() => {
-      try {
-         const raw = window.localStorage.getItem(FAREWELL_STORAGE_KEY);
-         if (!raw) return;
-         const parsed = JSON.parse(raw) as FarewellBoxPayload;
-         if (
-            parsed &&
-            typeof parsed.headline === "string" &&
-            Array.isArray(parsed.photos) &&
-            Array.isArray(parsed.quotes)
-         ) {
-            setCapsuleData(parsed);
-            setCapsuleVersion((v) => v + 1);
+      let isMounted = true;
+
+      const loadCapsule = async () => {
+         const supabase = getSupabaseBrowserClient();
+
+         if (supabase) {
+            const [boxRes, quotesRes, photosRes] = await Promise.all([
+               supabase
+                  .from("farewell_box")
+                  .select("*")
+                  .eq("id", "capsule-2026")
+                  .maybeSingle(),
+               supabase
+                  .from("farewell_quotes")
+                  .select("*")
+                  .order("created_at", { ascending: false }),
+               supabase
+                  .from("memories")
+                  .select("*")
+                  .eq("category", "farewell_photo")
+                  .order("created_at", { ascending: false }),
+            ]);
+
+            if (!boxRes.error && boxRes.data && isMounted) {
+               const loadedPhotos: FarewellMemoryPhoto[] =
+                  Array.isArray(photosRes.data) && photosRes.data.length > 0
+                     ? photosRes.data.map((row) => ({
+                          id: String(row.id),
+                          title: String(row.title),
+                          description: String(row.description ?? ""),
+                          image_url: String(row.image_url),
+                          taken_date: String(row.taken_date ?? "2026-05-15"),
+                          category: "farewell_photo",
+                       }))
+                     : INITIAL_FAREWELL_DATA.photos;
+
+               const loadedQuotes: FarewellQuote[] =
+                  Array.isArray(quotesRes.data) && quotesRes.data.length > 0
+                     ? quotesRes.data.map((row) => ({
+                          id: String(row.id),
+                          author_name: String(row.author_name),
+                          role: String(row.role ?? "Anggota XII PPLG 1"),
+                          quote: String(row.quote),
+                          tone: (Number(row.tone) as 1 | 2 | 3 | 4 | 5) || 1,
+                       }))
+                     : INITIAL_FAREWELL_DATA.quotes;
+
+               const nextPayload: FarewellBoxPayload = {
+                  headline: String(
+                     boxRes.data.headline ?? INITIAL_FAREWELL_DATA.headline
+                  ),
+                  subheadline: String(
+                     boxRes.data.subheadline ??
+                        INITIAL_FAREWELL_DATA.subheadline
+                  ),
+                  main_message: String(
+                     boxRes.data.main_message ??
+                        INITIAL_FAREWELL_DATA.main_message
+                  ),
+                  graduation_year: String(
+                     boxRes.data.graduation_year ?? "2026"
+                  ),
+                  audio_title: String(
+                     boxRes.data.audio_title ??
+                        INITIAL_FAREWELL_DATA.audio_title ??
+                        ""
+                  ),
+                  photos: loadedPhotos,
+                  quotes: loadedQuotes,
+               };
+
+               setCapsuleData(nextPayload);
+               setCapsuleVersion((v) => v + 1);
+               try {
+                  window.localStorage.setItem(
+                     FAREWELL_STORAGE_KEY,
+                     JSON.stringify(nextPayload)
+                  );
+               } catch {
+                  // Abaikan
+               }
+               return;
+            }
          }
-      } catch {
-         // Abaikan bila localStorage tidak tersedia
-      }
+
+         // Fallback localStorage apabila Supabase belum terhubung
+         try {
+            const raw = window.localStorage.getItem(FAREWELL_STORAGE_KEY);
+            if (!raw || !isMounted) return;
+            const parsed = JSON.parse(raw) as FarewellBoxPayload;
+            if (
+               parsed &&
+               typeof parsed.headline === "string" &&
+               Array.isArray(parsed.photos) &&
+               Array.isArray(parsed.quotes)
+            ) {
+               setCapsuleData(parsed);
+               setCapsuleVersion((v) => v + 1);
+            }
+         } catch {
+            // Abaikan bila localStorage tidak tersedia
+         }
+      };
+
+      loadCapsule();
+      return () => {
+         isMounted = false;
+      };
    }, []);
 
-   const handleSaveCapsuleData = (updated: FarewellBoxPayload) => {
+   // 2. Fungsi Sinkronisasi Penuh ke Supabase (farewell_box, farewell_quotes, memories)
+   const syncPayloadToSupabase = async (payload: FarewellBoxPayload) => {
+      const supabase = getSupabaseBrowserClient();
+      if (!supabase) return;
+
+      setIsSyncing(true);
+      try {
+         // A. Upsert farewell_box
+         await supabase.from("farewell_box").upsert(
+            {
+               id: "capsule-2026",
+               headline: payload.headline,
+               subheadline: payload.subheadline,
+               main_message: payload.main_message,
+               graduation_year: payload.graduation_year,
+               audio_title:
+                  payload.audio_title ??
+                  "Memori Lab PPLG 1 — Lo-Fi Farewell Mix",
+               updated_at: new Date().toISOString(),
+            },
+            { onConflict: "id" }
+         );
+
+         // B. Sinkronisasi farewell_quotes
+         const { data: existingQuotes } = await supabase
+            .from("farewell_quotes")
+            .select("id");
+         const payloadQuoteIds = new Set(payload.quotes.map((q) => q.id));
+         const quotesToDelete = (existingQuotes ?? [])
+            .map((r) => String(r.id))
+            .filter((id) => !payloadQuoteIds.has(id));
+
+         if (quotesToDelete.length > 0) {
+            await supabase
+               .from("farewell_quotes")
+               .delete()
+               .in("id", quotesToDelete);
+         }
+
+         if (payload.quotes.length > 0) {
+            await supabase.from("farewell_quotes").upsert(
+               payload.quotes.map((q) => ({
+                  id: q.id,
+                  author_name: q.author_name,
+                  role: q.role ?? "Anggota XII PPLG 1",
+                  quote: q.quote,
+                  tone: q.tone ?? 1,
+               })),
+               { onConflict: "id" }
+            );
+         }
+
+         // C. Sinkronisasi memories (category = 'farewell_photo')
+         const { data: existingPhotos } = await supabase
+            .from("memories")
+            .select("id")
+            .eq("category", "farewell_photo");
+         const payloadPhotoIds = new Set(payload.photos.map((p) => p.id));
+         const photosToDelete = (existingPhotos ?? [])
+            .map((r) => String(r.id))
+            .filter((id) => !payloadPhotoIds.has(id));
+
+         if (photosToDelete.length > 0) {
+            await supabase.from("memories").delete().in("id", photosToDelete);
+         }
+
+         if (payload.photos.length > 0) {
+            await supabase.from("memories").upsert(
+               payload.photos.map((p, idx) => ({
+                  id: p.id,
+                  code: `FW-${String(idx + 1).padStart(2, "0")}`,
+                  title: p.title,
+                  description: p.description,
+                  image_url: p.image_url,
+                  taken_date: p.taken_date,
+                  location: "Kapsul Perpisahan XII PPLG 1",
+                  category: "farewell_photo",
+               })),
+               { onConflict: "id" }
+            );
+         }
+      } finally {
+         setIsSyncing(false);
+      }
+   };
+
+   const handleSaveCapsuleData = async (updated: FarewellBoxPayload) => {
       setCapsuleData(updated);
+      setCapsuleVersion((v) => v + 1);
       try {
          window.localStorage.setItem(
             FAREWELL_STORAGE_KEY,
@@ -117,10 +303,11 @@ export function FarewellStageSection({
       } catch {
          // Abaikan error penyimpanan lokal
       }
-      onSyncCapsuleData?.(updated);
+      await syncPayloadToSupabase(updated);
+      await onSyncCapsuleData?.(updated);
    };
 
-   const handleResetDefaultCapsule = () => {
+   const handleResetDefaultCapsule = async () => {
       setCapsuleData(INITIAL_FAREWELL_DATA);
       setCapsuleVersion((v) => v + 1);
       try {
@@ -129,7 +316,8 @@ export function FarewellStageSection({
       } catch {
          // Abaikan
       }
-      onSyncCapsuleData?.(INITIAL_FAREWELL_DATA);
+      await syncPayloadToSupabase(INITIAL_FAREWELL_DATA);
+      await onSyncCapsuleData?.(INITIAL_FAREWELL_DATA);
    };
 
    const currentTrack =
@@ -173,15 +361,25 @@ export function FarewellStageSection({
             <div className="flex flex-wrap items-center gap-2 self-start lg:self-auto">
                {isAdmin ? (
                   <>
+                     <button
+                        type="button"
+                        onClick={() => setIsCrudModalOpen(true)}
+                        className="obsidian-pill inline-flex items-center gap-1.5 rounded-xl border-amber-400/50 bg-amber-500/15 px-3.5 py-2 text-xs font-semibold text-amber-700 dark:text-amber-200 glow-amber">
+                        <Settings2 className="h-3.5 w-3.5" />
+                        <span>Kelola Isi Kado 3D (CRUD)</span>
+                     </button>
+
                      <span className="obsidian-pill inline-flex items-center gap-1.5 rounded-xl border-emerald-400/45 bg-emerald-500/15 px-3 py-1.5 text-xs font-semibold text-emerald-700 dark:text-emerald-200">
                         <Unlock className="h-3.5 w-3.5 text-emerald-500" />
-                        <span>Mode Edit Kapsul Terbuka</span>
+                        <span>Edit Aktif</span>
                      </span>
+
                      {lastSavedAt && (
                         <span className="mono-tabular rounded-xl border border-sky-400/35 bg-sky-500/10 px-2.5 py-1.5 text-[11px] font-semibold text-sky-700 dark:text-sky-200">
                            Tersimpan {lastSavedAt}
                         </span>
                      )}
+
                      <button
                         type="button"
                         onClick={handleResetDefaultCapsule}
@@ -208,7 +406,7 @@ export function FarewellStageSection({
              RESPONSIF DI HP (360px-430px) & DESKTOP 12-COLUMN STAGE
          ===================================================================== */}
          <div className="relative z-10 mt-6 grid grid-cols-1 items-stretch gap-5 lg:grid-cols-12">
-            {/* KIRI (3 KOLOM): PEMUTAR VINYL 3D & PILIHAN TRACK NOSTALGIA */}
+            {/* KIRI (4 KOLOM): PEMUTAR VINYL 3D & PILIHAN TRACK NOSTALGIA */}
             <div className="obsidian-pill flex flex-col items-center justify-between rounded-2xl p-4 sm:p-5 lg:col-span-4">
                <div className="flex w-full items-center justify-between gap-2 border-b border-[var(--color-border)] pb-3">
                   <span className="inline-flex items-center gap-1.5 text-xs font-bold text-foreground">
@@ -277,7 +475,7 @@ export function FarewellStageSection({
                   </span>
                </div>
 
-               {/* Komponen Kado 3D Asli (100% Utuh & Tersambung ke State Kapsul) */}
+               {/* Komponen Kado 3D Asli (100% Utuh & Tersambung ke Supabase + Local) */}
                <div className="my-auto flex w-full justify-center overflow-hidden">
                   <FarewellGiftBox3D
                      key={capsuleVersion}
@@ -373,6 +571,19 @@ export function FarewellStageSection({
                ))}
             </div>
          </div>
+
+         {/* =====================================================================
+          4. MODAL CRUD KAPSUL KADO 3D (TERBUKA SAAT ADMIN AKTIF)
+         ===================================================================== */}
+         <FarewellCrudModal
+            isOpen={isCrudModalOpen}
+            capsuleData={capsuleData}
+            isSupabaseConnected={isSupabaseConnected}
+            isSyncing={isSyncing}
+            onClose={() => setIsCrudModalOpen(false)}
+            onSaveCapsule={handleSaveCapsuleData}
+            onSyncAllToSupabase={() => syncPayloadToSupabase(capsuleData)}
+         />
       </div>
    );
 }
