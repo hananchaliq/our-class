@@ -1,16 +1,22 @@
 "use client";
 
 import * as React from "react";
+import {
+   getSupabaseBrowserClient,
+   isSupabaseConfigured,
+} from "@/lib/supabase/client";
 
 export interface ClassAdminSession {
    email: string;
    roleLabel: string;
    loggedInAt: string;
    mode: "local-shared" | "supabase";
+   userId?: string;
 }
 
 interface ClassAuthContextValue {
    isAdmin: boolean;
+   isSupabaseConnected: boolean;
    session: ClassAdminSession | null;
    isModalOpen: boolean;
    isLoading: boolean;
@@ -25,9 +31,12 @@ interface ClassAuthContextValue {
 
 const AUTH_STORAGE_KEY = "pplg1-shared-admin-session";
 
-// Kredensial default 1 Akun Kelas Bersama (Fallback sebelum Supabase Auth Fase 14 aktif)
-export const DEFAULT_SHARED_CLASS_EMAIL = "admin@xiipplg1.sch.id";
-export const DEFAULT_SHARED_CLASS_PASS = "pplg1-2026";
+// Kredensial default 1 Akun Kelas Bersama (dapat dioverride lewat .env.local / Vercel)
+export const DEFAULT_SHARED_CLASS_EMAIL =
+   process.env.NEXT_PUBLIC_CLASS_ADMIN_EMAIL?.trim() ||
+   "admin@xiipplg1.sch.id";
+export const DEFAULT_SHARED_CLASS_PASS =
+   process.env.NEXT_PUBLIC_CLASS_ADMIN_PASSWORD?.trim() || "pplg1-2026";
 
 const ClassAuthContext = React.createContext<ClassAuthContextValue | undefined>(
    undefined
@@ -37,8 +46,69 @@ export function ClassAuthProvider({ children }: { children: React.ReactNode }) {
    const [session, setSession] = React.useState<ClassAdminSession | null>(null);
    const [isModalOpen, setIsModalOpen] = React.useState(false);
    const [isLoading, setIsLoading] = React.useState(false);
+   const supabaseConnected = isSupabaseConfigured();
 
+   // 1. Pulihkan sesi dari Supabase Auth (jika aktif) atau dari localStorage
    React.useEffect(() => {
+      const supabase = getSupabaseBrowserClient();
+
+      if (supabase) {
+         supabase.auth
+            .getSession()
+            .then(({ data }) => {
+               const sbUser = data.session?.user;
+               if (sbUser?.email) {
+                  const nextSession: ClassAdminSession = {
+                     email: sbUser.email,
+                     roleLabel: "Supabase Auth Admin · XII PPLG 1",
+                     loggedInAt: new Date().toISOString(),
+                     mode: "supabase",
+                     userId: sbUser.id,
+                  };
+                  setSession(nextSession);
+                  try {
+                     window.localStorage.setItem(
+                        AUTH_STORAGE_KEY,
+                        JSON.stringify(nextSession)
+                     );
+                  } catch {
+                     // Abaikan
+                  }
+               }
+            })
+            .catch(() => {
+               // Abaikan jika gagal mengambil sesi awal
+            });
+
+         const { data: listener } = supabase.auth.onAuthStateChange(
+            (_event, sbSession) => {
+               if (sbSession?.user?.email) {
+                  const nextSession: ClassAdminSession = {
+                     email: sbSession.user.email,
+                     roleLabel: "Supabase Auth Admin · XII PPLG 1",
+                     loggedInAt: new Date().toISOString(),
+                     mode: "supabase",
+                     userId: sbSession.user.id,
+                  };
+                  setSession(nextSession);
+                  try {
+                     window.localStorage.setItem(
+                        AUTH_STORAGE_KEY,
+                        JSON.stringify(nextSession)
+                     );
+                  } catch {
+                     // Abaikan
+                  }
+               }
+            }
+         );
+
+         return () => {
+            listener.subscription.unsubscribe();
+         };
+      }
+
+      // Fallback localStorage apabila Supabase belum dikonfigurasi
       try {
          const raw = window.localStorage.getItem(AUTH_STORAGE_KEY);
          if (raw) {
@@ -69,9 +139,6 @@ export function ClassAuthProvider({ children }: { children: React.ReactNode }) {
          const cleanEmail = email.trim().toLowerCase();
          const cleanPass = password.trim();
 
-         // Simulasi latensi verifikasi halus
-         await new Promise((resolve) => setTimeout(resolve, 260));
-
          if (!cleanEmail || !cleanPass) {
             setIsLoading(false);
             return {
@@ -80,32 +147,76 @@ export function ClassAuthProvider({ children }: { children: React.ReactNode }) {
             };
          }
 
-         const isValidFallback =
-            (cleanEmail === DEFAULT_SHARED_CLASS_EMAIL ||
+         const supabase = getSupabaseBrowserClient();
+
+         // A. Jika Supabase telah dikonfigurasi, coba autentikasi ke Supabase Auth terlebih dahulu
+         if (supabase) {
+            const { data, error } = await supabase.auth.signInWithPassword({
+               email: cleanEmail,
+               password: cleanPass,
+            });
+
+            if (!error && data.user?.email) {
+               const sbSession: ClassAdminSession = {
+                  email: data.user.email,
+                  roleLabel: "Supabase Auth Admin · XII PPLG 1",
+                  loggedInAt: new Date().toISOString(),
+                  mode: "supabase",
+                  userId: data.user.id,
+               };
+               setSession(sbSession);
+               try {
+                  window.localStorage.setItem(
+                     AUTH_STORAGE_KEY,
+                     JSON.stringify(sbSession)
+                  );
+               } catch {
+                  // Abaikan
+               }
+               setIsLoading(false);
+               setIsModalOpen(false);
+               return { ok: true };
+            }
+         }
+
+         // B. Verifikasi Kredensial 1 Akun Kelas Bersama (Fallback / Hybrid Mode)
+         await new Promise((resolve) => setTimeout(resolve, 220));
+
+         const isValidSharedCredentials =
+            (cleanEmail === DEFAULT_SHARED_CLASS_EMAIL.toLowerCase() ||
+               cleanEmail === "admin@xiipplg1.sch.id" ||
                cleanEmail === "xiipplg1@gmail.com" ||
                cleanEmail === "ananxpplg1@gmail.com") &&
             (cleanPass === DEFAULT_SHARED_CLASS_PASS ||
+               cleanPass === "pplg1-2026" ||
                cleanPass === "xiipplg1" ||
                cleanPass === "2026");
 
-         if (!isValidFallback) {
+         if (!isValidSharedCredentials) {
             setIsLoading(false);
             return {
                ok: false,
-               error: "Kredensial tidak cocok. Gunakan akun bersama: admin@xiipplg1.sch.id / pplg1-2026",
+               error: supabase
+                  ? "Login gagal di Supabase Auth maupun Akun Bersama. Pastikan email/password benar."
+                  : `Kredensial tidak cocok. Gunakan akun bersama: ${DEFAULT_SHARED_CLASS_EMAIL} / ${DEFAULT_SHARED_CLASS_PASS}`,
             };
          }
 
          const nextSession: ClassAdminSession = {
             email: cleanEmail,
-            roleLabel: "Shared Class Admin · XII PPLG 1",
+            roleLabel: supabase
+               ? "Shared Class Admin (Supabase DB Ready)"
+               : "Shared Class Admin · XII PPLG 1",
             loggedInAt: new Date().toISOString(),
-            mode: "local-shared",
+            mode: supabase ? "supabase" : "local-shared",
          };
 
          setSession(nextSession);
          try {
-            window.localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(nextSession));
+            window.localStorage.setItem(
+               AUTH_STORAGE_KEY,
+               JSON.stringify(nextSession)
+            );
          } catch {
             // Abaikan bila storage penuh
          }
@@ -119,7 +230,13 @@ export function ClassAuthProvider({ children }: { children: React.ReactNode }) {
 
    const logoutAdmin = React.useCallback(async () => {
       setIsLoading(true);
-      await new Promise((resolve) => setTimeout(resolve, 150));
+      const supabase = getSupabaseBrowserClient();
+      if (supabase) {
+         await supabase.auth.signOut().catch(() => {});
+      } else {
+         await new Promise((resolve) => setTimeout(resolve, 150));
+      }
+
       setSession(null);
       try {
          window.localStorage.removeItem(AUTH_STORAGE_KEY);
@@ -133,6 +250,7 @@ export function ClassAuthProvider({ children }: { children: React.ReactNode }) {
    const value = React.useMemo(
       () => ({
          isAdmin: Boolean(session),
+         isSupabaseConnected: supabaseConnected,
          session,
          isModalOpen,
          isLoading,
@@ -143,6 +261,7 @@ export function ClassAuthProvider({ children }: { children: React.ReactNode }) {
       }),
       [
          session,
+         supabaseConnected,
          isModalOpen,
          isLoading,
          openLoginModal,
@@ -153,7 +272,9 @@ export function ClassAuthProvider({ children }: { children: React.ReactNode }) {
    );
 
    return (
-      <ClassAuthContext.Provider value={value}>{children}</ClassAuthContext.Provider>
+      <ClassAuthContext.Provider value={value}>
+         {children}
+      </ClassAuthContext.Provider>
    );
 }
 

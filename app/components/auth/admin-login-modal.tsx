@@ -3,6 +3,8 @@
 import * as React from "react";
 import {
    CheckCircle2,
+   Cloud,
+   Database,
    Eye,
    EyeOff,
    KeyRound,
@@ -81,7 +83,7 @@ export function AdminAccessButton({
       );
    }
 
-   // Default: "rail" (Sudut bawah Desktop Left Navigation Rail — terinspirasi kartu bawah Tracle)
+   // Default: "rail" (Sudut bawah Desktop Left Navigation Rail)
    return (
       <button
          type="button"
@@ -129,6 +131,7 @@ export function AdminAccessButton({
 export function AdminLoginModal() {
    const {
       isAdmin,
+      isSupabaseConnected,
       session,
       isModalOpen,
       isLoading,
@@ -209,12 +212,14 @@ export function AdminLoginModal() {
                   </span>
                   <div>
                      <span className="mono-tabular text-[11px] font-semibold tracking-wider text-sky-600 dark:text-sky-300">
-                        XII PPLG 1 · SHARED CLASS AUTH
+                        XII PPLG 1 · SUPABASE & SHARED AUTH
                      </span>
                      <h2
                         id="class-auth-modal-title"
                         className="text-lg font-bold tracking-tight text-foreground">
-                        {isAdmin ? "Status Akses Admin Kelas" : "Login Akun Kelas Bersama"}
+                        {isAdmin
+                           ? "Status Akses Admin Kelas"
+                           : "Login Akun Kelas Bersama"}
                      </h2>
                   </div>
                </div>
@@ -228,23 +233,45 @@ export function AdminLoginModal() {
                </button>
             </div>
 
+            {/* Indikator Koneksi Database Supabase vs Local Mode */}
+            <div className="obsidian-pill mt-4 flex items-center justify-between gap-2 rounded-xl px-3.5 py-2 text-[11px]">
+               <span className="inline-flex items-center gap-1.5 font-medium text-muted-foreground">
+                  {isSupabaseConnected ? (
+                     <Cloud className="h-3.5 w-3.5 text-emerald-500" />
+                  ) : (
+                     <Database className="h-3.5 w-3.5 text-amber-500" />
+                  )}
+                  <span>Status Backend:</span>
+               </span>
+               <span
+                  className={`mono-tabular font-bold ${
+                     isSupabaseConnected
+                        ? "text-emerald-600 dark:text-emerald-300"
+                        : "text-amber-600 dark:text-amber-300"
+                  }`}>
+                  {isSupabaseConnected
+                     ? "SUPABASE CLOUD AKTIF"
+                     : "MODE LOKAL (SIAP VERCEL ENV)"}
+               </span>
+            </div>
+
             {isAdmin && session ? (
                /* State Ketika Sudah Login (Admin Active) */
-               <div className="mt-5 flex flex-col gap-4">
+               <div className="mt-4 flex flex-col gap-4">
                   <div className="obsidian-pill flex flex-col gap-2 rounded-xl border-emerald-400/35 bg-emerald-500/10 p-4">
                      <div className="flex items-center justify-between">
                         <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-700 dark:text-emerald-300">
                            <CheckCircle2 className="h-4 w-4" />
-                           <span>Admin Active (Akses Penuh Terbuka)</span>
+                           <span>Admin Active (Akses CRUD Penuh)</span>
                         </span>
                         <span className="mono-tabular text-[11px] text-muted-foreground">
                            {session.mode === "supabase" ? "SUPABASE" : "SHARED"}
                         </span>
                      </div>
                      <p className="text-xs leading-relaxed text-muted-foreground">
-                        Seluruh fitur CRUD (Edit 22 ID Card Siswa, Surat & Foto Kado 3D, Jadwal Mapel/Piket, serta Galeri Project PPLG) kini aktif untuk sesi ini.
+                        Seluruh fitur CRUD (Edit 22 ID Card Siswa, Surat & Foto Kado 3D, Jadwal Mapel/Piket, serta Galeri Project PPLG) kini terbuka untuk sesi ini.
                      </p>
-                     <div className="mt-1 border-t border-[var(--color-border)] pt-2 flex items-center justify-between text-[11px]">
+                     <div className="mt-1 flex items-center justify-between border-t border-[var(--color-border)] pt-2 text-[11px]">
                         <span className="text-muted-foreground">Akun Aktif:</span>
                         <span className="mono-tabular font-semibold text-foreground">
                            {session.email}
@@ -271,9 +298,9 @@ export function AdminLoginModal() {
                </div>
             ) : (
                /* Form Login 1 Akun Kelas Bersama */
-               <form onSubmit={handleSubmit} className="mt-5 flex flex-col gap-4">
+               <form onSubmit={handleSubmit} className="mt-4 flex flex-col gap-4">
                   <p className="text-xs leading-relaxed text-muted-foreground">
-                     Pengunjung publik bebas menjelajahi 22 ID Card 3D dan membuka Kado Perpisahan tanpa login. Masuk dengan <strong>1 akun bersama XII PPLG 1</strong> untuk mengubah biodata, jadwal, galeri, dan isi kado.
+                     Pengunjung publik bebas menjelajahi 22 ID Card 3D dan membuka Kado Perpisahan tanpa login. Masuk dengan <strong>1 akun bersama XII PPLG 1</strong> (atau akun Supabase Auth Anda) untuk membuka fitur CRUD.
                   </p>
 
                   {errorMsg && (
@@ -288,7 +315,7 @@ export function AdminLoginModal() {
                      <label
                         htmlFor="shared-admin-email"
                         className="text-xs font-medium text-foreground">
-                        Email Akun Kelas
+                        Email Akun Kelas / Supabase Auth
                      </label>
                      <div className="relative flex items-center">
                         <Mail className="pointer-events-none absolute left-3.5 h-4 w-4 text-muted-foreground" />
@@ -334,7 +361,9 @@ export function AdminLoginModal() {
                            type="button"
                            onClick={() => setShowPassword((prev) => !prev)}
                            aria-label={
-                              showPassword ? "Sembunyikan password" : "Tampilkan password"
+                              showPassword
+                                 ? "Sembunyikan password"
+                                 : "Tampilkan password"
                            }
                            className="absolute right-3 text-muted-foreground hover:text-foreground">
                            {showPassword ? (
@@ -366,7 +395,11 @@ export function AdminLoginModal() {
                         disabled={isLoading}
                         className="obsidian-pill inline-flex items-center gap-2 rounded-xl border-sky-400/45 bg-sky-500/20 px-5 py-2.5 text-xs font-semibold text-sky-700 dark:text-sky-200 hover:bg-sky-500/30 glow-cyan disabled:opacity-50">
                         <ShieldCheck className="h-4 w-4" />
-                        <span>{isLoading ? "Memverifikasi..." : "Masuk sebagai Admin Kelas"}</span>
+                        <span>
+                           {isLoading
+                              ? "Memverifikasi..."
+                              : "Masuk sebagai Admin Kelas"}
+                        </span>
                      </button>
                   </div>
                </form>
