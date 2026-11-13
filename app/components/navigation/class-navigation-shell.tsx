@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import {
+   ArrowUp,
    CalendarClock,
    Code2,
    FolderGit2,
@@ -84,8 +85,11 @@ interface ClassNavigationShellProps {
 }
 
 export function ClassNavigationShell({ children }: ClassNavigationShellProps) {
-   const [activeSection, setActiveSection] = React.useState<string>("hero-section");
+   const [activeSection, setActiveSection] =
+      React.useState<string>("hero-section");
    const [wibTime, setWibTime] = React.useState<string>("--:--:--");
+   const [scrollProgressPct, setScrollProgressPct] = React.useState<number>(0);
+   const [showScrollTop, setShowScrollTop] = React.useState<boolean>(false);
 
    // Live Clock WIB (Asia/Jakarta)
    React.useEffect(() => {
@@ -129,13 +133,33 @@ export function ClassNavigationShell({ children }: ClassNavigationShellProps) {
             }
          },
          {
-            rootMargin: "-20% 0px -55% 0px",
+            rootMargin: "-18% 0px -55% 0px",
             threshold: [0.1, 0.25, 0.5],
          }
       );
 
       sectionElements.forEach((el) => observer.observe(el));
       return () => observer.disconnect();
+   }, []);
+
+   // Tracker progres scroll halaman & visibilitas tombol Ke Atas di HP
+   React.useEffect(() => {
+      const handleScroll = () => {
+         const scrollTop = window.scrollY || document.documentElement.scrollTop;
+         const docHeight =
+            document.documentElement.scrollHeight -
+            document.documentElement.clientHeight;
+         const pct =
+            docHeight > 0
+               ? Math.min(100, Math.max(0, Math.round((scrollTop / docHeight) * 100)))
+               : 0;
+         setScrollProgressPct(pct);
+         setShowScrollTop(scrollTop > 480);
+      };
+
+      handleScroll();
+      window.addEventListener("scroll", handleScroll, { passive: true });
+      return () => window.removeEventListener("scroll", handleScroll);
    }, []);
 
    const handleNavigate = (id: string) => {
@@ -145,6 +169,18 @@ export function ClassNavigationShell({ children }: ClassNavigationShellProps) {
          element.scrollIntoView({ behavior: "smooth", block: "start" });
       }
    };
+
+   const handleScrollToTop = () => {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+      setActiveSection("hero-section");
+   };
+
+   const currentNavMeta = React.useMemo(() => {
+      return (
+         CLASS_NAV_ITEMS.find((item) => item.id === activeSection) ??
+         CLASS_NAV_ITEMS[0]
+      );
+   }, [activeSection]);
 
    return (
       <div className="relative flex min-h-screen w-full flex-col lg:flex-row">
@@ -193,7 +229,9 @@ export function ClassNavigationShell({ children }: ClassNavigationShellProps) {
                   <CommandPaletteTrigger variant="rail" />
 
                   {/* Daftar Menu Navigasi Utama */}
-                  <nav aria-label="Menu Section Kelas" className="flex flex-col gap-1">
+                  <nav
+                     aria-label="Menu Section Kelas"
+                     className="flex flex-col gap-1">
                      <div className="px-2 pb-1 text-[10px] font-semibold tracking-wider text-muted-foreground uppercase">
                         Navigasi Arsip
                      </div>
@@ -261,8 +299,12 @@ export function ClassNavigationShell({ children }: ClassNavigationShellProps) {
                               key={div.name}
                               className="flex items-center justify-between rounded-lg px-2 py-1 text-xs text-muted-foreground">
                               <span className="flex items-center gap-2 truncate">
-                                 <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${div.color}`} />
-                                 <span className="truncate text-[11px]">{div.name}</span>
+                                 <span
+                                    className={`h-1.5 w-1.5 shrink-0 rounded-full ${div.color}`}
+                                 />
+                                 <span className="truncate text-[11px]">
+                                    {div.name}
+                                 </span>
                               </span>
                               <span className="mono-tabular text-[11px] font-medium text-foreground">
                                  {div.count}
@@ -290,49 +332,78 @@ export function ClassNavigationShell({ children }: ClassNavigationShellProps) {
          </aside>
 
          {/* =================================================================
-          2. MOBILE COMPACT TOP BAR (< 1024px) DENGAN PENCARIAN & ADMIN LOGIN
+          2. MOBILE COMPACT TOP BAR (< 1024px, OPTIMASI LAYAR 360px - 430px)
          ================================================================= */}
-         <header className="sticky top-0 z-30 flex items-center justify-between gap-2 border-b border-[var(--color-border)] bg-[var(--color-card)] px-3.5 py-2.5 backdrop-blur-xl lg:hidden">
-            <a
-               href="#hero-section"
-               onClick={(e) => {
-                  e.preventDefault();
-                  handleNavigate("hero-section");
-               }}
-               className="flex items-center gap-2 min-w-0">
-               <span className="obsidian-pill flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border-sky-400/35 bg-sky-500/15 text-sky-600 dark:text-sky-300">
-                  <Terminal className="h-4 w-4" />
-               </span>
-               <div className="flex flex-col min-w-0">
-                  <span className="text-xs font-bold tracking-tight text-foreground whitespace-nowrap">
-                     XII PPLG 1
+         <header className="sticky top-0 z-30 flex flex-col border-b border-[var(--color-border)] bg-[var(--color-card)] backdrop-blur-xl lg:hidden">
+            <div className="flex items-center justify-between gap-1.5 px-3 py-2 sm:px-4">
+               <a
+                  href="#hero-section"
+                  onClick={(e) => {
+                     e.preventDefault();
+                     handleNavigate("hero-section");
+                  }}
+                  className="flex items-center gap-2 min-w-0">
+                  <span className="obsidian-pill flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border-sky-400/35 bg-sky-500/15 text-sky-600 dark:text-sky-300">
+                     <Terminal className="h-4 w-4" />
                   </span>
-                  <span className="mono-tabular text-[10px] text-muted-foreground whitespace-nowrap">
-                     {wibTime} WIB
-                  </span>
-               </div>
-            </a>
+                  <div className="flex flex-col min-w-0">
+                     <div className="flex items-center gap-1.5">
+                        <span className="text-xs font-bold tracking-tight text-foreground whitespace-nowrap">
+                           XII PPLG 1
+                        </span>
+                        <span className="mono-tabular rounded bg-sky-500/15 px-1.5 py-0.5 text-[9px] font-bold text-sky-600 dark:text-sky-300">
+                           SEC {currentNavMeta.code}
+                        </span>
+                     </div>
+                     <span className="mono-tabular truncate text-[10px] text-muted-foreground">
+                        {wibTime} WIB · {currentNavMeta.shortLabel}
+                     </span>
+                  </div>
+               </a>
 
-            <div className="flex items-center gap-1.5 shrink-0">
-               <CommandPaletteTrigger variant="mobile" />
-               <AdminAccessButton variant="mobile" />
-               <ThemeSwitcher variant="icon" className="h-8 w-8 rounded-lg" />
+               <div className="flex items-center gap-1 shrink-0">
+                  <CommandPaletteTrigger variant="mobile" />
+                  <AdminAccessButton variant="mobile" />
+                  <ThemeSwitcher variant="icon" className="h-8 w-8 rounded-lg" />
+               </div>
+            </div>
+
+            {/* Indikator Progres Baca Halaman Mobile (Tipis & Presisi) */}
+            <div className="h-[2px] w-full overflow-hidden bg-transparent">
+               <div
+                  style={{ width: `${scrollProgressPct}%` }}
+                  className="h-full bg-gradient-to-r from-sky-400 via-indigo-400 to-amber-400 transition-all duration-150"
+               />
             </div>
          </header>
 
          {/* =================================================================
-          3. MAIN CONTENT AREA (DENGAN OFFSET LEFT RAIL DI DESKTOP)
+          3. MAIN CONTENT AREA (DENGAN SAFE-AREA DOCK DI HP & OFFSET RAIL DI DESKTOP)
          ================================================================= */}
-         <div className="flex-1 pb-24 lg:pb-12 lg:pl-[264px]">
+         <div className="pb-safe-dock flex-1 lg:pb-12 lg:pl-[264px]">
             {children}
          </div>
 
          {/* =================================================================
-          4. MOBILE BOTTOM FLOATING DOCK (< 1024px, ERGONOMIS & <= 15% VIEWPORT)
+          4. TOMBOL MELAYANG "KE ATAS" DI MOBILE SAAT SCROLL JAUH KE BAWAH
+         ================================================================= */}
+         {showScrollTop && (
+            <button
+               type="button"
+               onClick={handleScrollToTop}
+               aria-label="Kembali ke bagian atas halaman"
+               className="obsidian-pill fixed right-3.5 bottom-[5.25rem] z-40 inline-flex items-center gap-1.5 rounded-full border-sky-400/45 px-3 py-2 text-[11px] font-bold text-sky-600 shadow-lg transition hover:border-sky-400 dark:text-sky-300 lg:right-6 lg:bottom-6">
+               <ArrowUp className="h-3.5 w-3.5" />
+               <span className="mono-tabular">{scrollProgressPct}%</span>
+            </button>
+         )}
+
+         {/* =================================================================
+          5. MOBILE BOTTOM FLOATING DOCK (< 1024px, ERGONOMIS & <= 15% VIEWPORT)
          ================================================================= */}
          <nav
             aria-label="Navigasi Bawah Mobile"
-            className="fixed inset-x-3 bottom-3 z-40 lg:hidden">
+            className="fixed inset-x-2.5 bottom-2.5 z-40 sm:inset-x-4 lg:hidden">
             <div className="obsidian-surface mx-auto flex max-w-md items-center justify-around gap-1 rounded-2xl p-1.5 shadow-2xl">
                {CLASS_NAV_ITEMS.map((item) => {
                   const Icon = item.icon;
@@ -345,7 +416,7 @@ export function ClassNavigationShell({ children }: ClassNavigationShellProps) {
                         type="button"
                         onClick={() => handleNavigate(item.id)}
                         aria-current={isActive ? "location" : undefined}
-                        className={`flex flex-1 flex-col items-center justify-center gap-1 rounded-xl py-2 px-1.5 text-[10px] font-medium transition-all duration-200 whitespace-nowrap ${
+                        className={`flex min-h-[46px] flex-1 flex-col items-center justify-center gap-1 rounded-xl px-1 py-1.5 text-[10px] font-semibold transition-all duration-200 whitespace-nowrap ${
                            isActive
                               ? isFarewell
                                  ? "obsidian-pill border-amber-400/40 bg-amber-500/15 text-amber-700 dark:text-amber-200 glow-amber"
@@ -361,7 +432,9 @@ export function ClassNavigationShell({ children }: ClassNavigationShellProps) {
                                  : "text-muted-foreground"
                            }`}
                         />
-                        <span className="truncate max-w-[64px]">{item.shortLabel}</span>
+                        <span className="max-w-[60px] truncate leading-none">
+                           {item.shortLabel}
+                        </span>
                      </button>
                   );
                })}
