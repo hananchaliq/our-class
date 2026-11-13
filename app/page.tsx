@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { CalendarClock, FolderGit2 } from "lucide-react";
+import { FolderGit2 } from "lucide-react";
 import { ClassLanyardShowcase } from "./components/3d/class-lanyard-showcase";
 import { FarewellGiftBox3D } from "./components/3d/farewell-gift-box-3d";
 import { MemoryPhotoCube3D, VinylDisc3D } from "./components/3d/memory-props-3d";
@@ -11,6 +11,7 @@ import { BentoHeroTelemetry } from "./components/bento/bento-hero-telemetry";
 import { ClassActivityWidgets } from "./components/bento/class-activity-widgets";
 import { CommandPaletteTrigger } from "./components/command/command-palette";
 import { ClassNavigationShell } from "./components/navigation/class-navigation-shell";
+import { ClassScheduleArchive } from "./components/schedule/class-schedule-archive";
 import { ThemeSwitcher } from "./components/theme/theme-switcher";
 
 export default function Home() {
@@ -49,37 +50,17 @@ export default function Home() {
             </section>
 
             {/* =====================================================================
-             2. HALAMAN / SECTION KEDUA: ID CARD 3D LANYARD RAIL (22 SISWA)
+             2. HALAMAN / SECTION KEDUA: ID CARD 3D LANYARD RAIL (22 SISWA — FASE 8)
             ===================================================================== */}
             <section id="lanyard-section" className="scroll-mt-6">
                <ClassLanyardShowcase />
             </section>
 
             {/* =====================================================================
-             3. ANCHOR SECTION JADWAL & PIKET (DIPERLUAS PADA FASE 9 & 10)
+             3. SECTION KETIGA: ARSIP JADWAL MAPEL & PIKET KENANGAN (FASE 9)
             ===================================================================== */}
-            <section
-               id="schedule-section"
-               className="obsidian-surface scroll-mt-6 p-6 sm:p-8">
-               <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
-                  <div>
-                     <div className="inline-flex items-center gap-2 text-xs font-medium text-sky-600 dark:text-sky-300">
-                        <CalendarClock className="h-3.5 w-3.5" />
-                        <span className="mono-tabular tracking-widest">
-                           SECTION 03 · JADWAL MAPEL, PIKET & AGENDA
-                        </span>
-                     </div>
-                     <h2 className="mt-2 text-xl font-semibold tracking-tight text-foreground sm:text-2xl">
-                        Arsip Jadwal Pelajaran & Piket Harian XII PPLG 1
-                     </h2>
-                     <p className="mt-1 text-xs sm:text-sm text-muted-foreground">
-                        Jadwal produktif PPLG, mata pelajaran umum, serta pembagian piket harian Senin–Sabtu (22 siswa).
-                     </p>
-                  </div>
-                  <span className="mono-tabular text-xs font-semibold text-muted-foreground">
-                     SENIN — SABTU
-                  </span>
-               </div>
+            <section id="schedule-section" className="scroll-mt-6">
+               <ClassScheduleArchive />
             </section>
 
             {/* =====================================================================
