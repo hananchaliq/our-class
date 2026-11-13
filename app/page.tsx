@@ -12,6 +12,7 @@ import { ClassActivityWidgets } from "./components/bento/class-activity-widgets"
 import { CommandPaletteTrigger } from "./components/command/command-palette";
 import { ClassNavigationShell } from "./components/navigation/class-navigation-shell";
 import { ClassScheduleArchive } from "./components/schedule/class-schedule-archive";
+import { ClassTasksAgendaBoard } from "./components/schedule/class-tasks-agenda-board";
 import { ThemeSwitcher } from "./components/theme/theme-switcher";
 
 export default function Home() {
@@ -57,10 +58,11 @@ export default function Home() {
             </section>
 
             {/* =====================================================================
-             3. SECTION KETIGA: ARSIP JADWAL MAPEL & PIKET KENANGAN (FASE 9)
+             3. SECTION KETIGA: JADWAL MAPEL, PIKET & PAPAN TUGAS/AGENDA (FASE 9 & 10)
             ===================================================================== */}
-            <section id="schedule-section" className="scroll-mt-6">
+            <section id="schedule-section" className="flex scroll-mt-6 flex-col gap-4">
                <ClassScheduleArchive />
+               <ClassTasksAgendaBoard />
             </section>
 
             {/* =====================================================================
