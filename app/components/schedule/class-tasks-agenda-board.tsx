@@ -13,6 +13,11 @@ import {
    Sparkles,
 } from "lucide-react";
 import { useClassAuth } from "../auth/class-auth-provider";
+import { TasksCrudModal } from "../admin/tasks-crud-modal";
+import {
+   getSupabaseBrowserClient,
+   isSupabaseConfigured,
+} from "@/lib/supabase/client";
 
 export type TaskStatus = "in_progress" | "urgent" | "completed";
 
@@ -21,7 +26,12 @@ export interface ClassTaskItem {
    code: string;
    title: string;
    subject: string;
-   division: "Semua Divisi" | "Frontend" | "Backend" | "UI/UX & Creative" | "Game & Mobile";
+   division:
+      | "Semua Divisi"
+      | "Frontend"
+      | "Backend"
+      | "UI/UX & Creative"
+      | "Game & Mobile";
    deadline: string;
    status: TaskStatus;
    progressPct: number;
@@ -153,6 +163,9 @@ export const INITIAL_CLASS_AGENDAS: ClassAgendaEvent[] = [
    },
 ];
 
+const TASKS_STORAGE_KEY = "pplg1-tasks-v1";
+const AGENDAS_STORAGE_KEY = "pplg1-agendas-v1";
+
 interface ClassTasksAgendaBoardProps {
    initialTasks?: ClassTaskItem[];
    initialAgendas?: ClassAgendaEvent[];
@@ -166,9 +179,198 @@ export function ClassTasksAgendaBoard({
 }: ClassTasksAgendaBoardProps) {
    const { isAdmin, openLoginModal } = useClassAuth();
    const [tasks, setTasks] = React.useState<ClassTaskItem[]>(initialTasks);
+   const [agendas, setAgendas] =
+      React.useState<ClassAgendaEvent[]>(initialAgendas);
    const [statusFilter, setStatusFilter] = React.useState<"all" | TaskStatus>(
       "all"
    );
+   const [isTaskModalOpen, setIsTaskModalOpen] = React.useState(false);
+
+   // Muat daftar tugas & agenda dari localStorage + Supabase public.class_tasks
+   React.useEffect(() => {
+      let isMounted = true;
+
+      try {
+         const savedTasks = window.localStorage.getItem(TASKS_STORAGE_KEY);
+         if (savedTasks) {
+            const parsed = JSON.parse(savedTasks) as ClassTaskItem[];
+            if (Array.isArray(parsed) && parsed.length > 0 && isMounted) {
+               setTasks(parsed);
+            }
+         }
+
+         const savedAgendas = window.localStorage.getItem(AGENDAS_STORAGE_KEY);
+         if (savedAgendas) {
+            const parsedAgendas = JSON.parse(
+               savedAgendas
+            ) as ClassAgendaEvent[];
+            if (
+               Array.isArray(parsedAgendas) &&
+               parsedAgendas.length > 0 &&
+               isMounted
+            ) {
+               setAgendas(parsedAgendas);
+            }
+         }
+      } catch {
+         // Abaikan error localStorage
+      }
+
+      async function fetchTasksFromSupabase() {
+         if (!isSupabaseConfigured()) return;
+         const supabase = getSupabaseBrowserClient();
+         if (!supabase) return;
+
+         const { data, error } = await supabase
+            .from("class_tasks")
+            .select("*")
+            .order("code", { ascending: true });
+
+         if (error || !data || data.length === 0 || !isMounted) return;
+
+         const mapped: ClassTaskItem[] = data.map((row) => ({
+            id: String(row.id),
+            code: String(row.code ?? "TSK"),
+            title: String(row.title ?? "Tugas Kelas"),
+            subject: String(row.subject ?? "Produktif PPLG"),
+            division: (row.division as ClassTaskItem["division"]) ?? "Semua Divisi",
+            deadline: String(row.deadline ?? "2026"),
+            status: (row.status as TaskStatus) ?? "in_progress",
+            progressPct: Number(row.progress_pct ?? 0),
+         }));
+
+         if (mapped.length > 0 && isMounted) {
+            setTasks(mapped);
+            try {
+               window.localStorage.setItem(
+                  TASKS_STORAGE_KEY,
+                  JSON.stringify(mapped)
+               );
+            } catch {
+               // Ignore
+            }
+         }
+      }
+
+      fetchTasksFromSupabase();
+
+      return () => {
+         isMounted = false;
+      };
+   }, []);
+
+   const persistTasksLocal = (nextTasks: ClassTaskItem[]) => {
+      setTasks(nextTasks);
+      try {
+         window.localStorage.setItem(
+            TASKS_STORAGE_KEY,
+            JSON.stringify(nextTasks)
+         );
+      } catch {
+         // Ignore
+      }
+   };
+
+   const upsertTaskToSupabase = async (taskItem: ClassTaskItem) => {
+      if (!isSupabaseConfigured()) return;
+      const supabase = getSupabaseBrowserClient();
+      if (!supabase) return;
+
+      const { error } = await supabase.from("class_tasks").upsert(
+         {
+            id: taskItem.id,
+            code: taskItem.code,
+            title: taskItem.title,
+            subject: taskItem.subject,
+            division: taskItem.division,
+            deadline: taskItem.deadline,
+            status: taskItem.status,
+            progress_pct: taskItem.progressPct,
+            updated_at: new Date().toISOString(),
+         },
+         { onConflict: "id" }
+      );
+
+      if (error) {
+         throw new Error(error.message);
+      }
+   };
+
+   const syncAllTasksToSupabase = async (targetTasks = tasks) => {
+      if (!isSupabaseConfigured()) return;
+      const supabase = getSupabaseBrowserClient();
+      if (!supabase) return;
+
+      const rows = targetTasks.map((t) => ({
+         id: t.id,
+         code: t.code,
+         title: t.title,
+         subject: t.subject,
+         division: t.division,
+         deadline: t.deadline,
+         status: t.status,
+         progress_pct: t.progressPct,
+         updated_at: new Date().toISOString(),
+      }));
+
+      const { error } = await supabase
+         .from("class_tasks")
+         .upsert(rows, { onConflict: "id" });
+
+      if (error) {
+         throw new Error(error.message);
+      }
+   };
+
+   const handleSaveSingleTask = async (taskItem: ClassTaskItem) => {
+      const exists = tasks.some((t) => t.id === taskItem.id);
+      const nextTasks = exists
+         ? tasks.map((t) => (t.id === taskItem.id ? taskItem : t))
+         : [...tasks, taskItem];
+
+      persistTasksLocal(nextTasks);
+      if (isSupabaseConfigured()) {
+         await upsertTaskToSupabase(taskItem);
+      }
+   };
+
+   const handleDeleteSingleTask = async (taskId: string) => {
+      const nextTasks = tasks.filter((t) => t.id !== taskId);
+      persistTasksLocal(nextTasks);
+
+      if (isSupabaseConfigured()) {
+         const supabase = getSupabaseBrowserClient();
+         if (supabase) {
+            await supabase.from("class_tasks").delete().eq("id", taskId);
+         }
+      }
+   };
+
+   const handleSaveAgendas = async (nextAgendas: ClassAgendaEvent[]) => {
+      setAgendas(nextAgendas);
+      try {
+         window.localStorage.setItem(
+            AGENDAS_STORAGE_KEY,
+            JSON.stringify(nextAgendas)
+         );
+      } catch {
+         // Ignore
+      }
+   };
+
+   const handleResetDefault = async () => {
+      setTasks(INITIAL_CLASS_TASKS);
+      setAgendas(INITIAL_CLASS_AGENDAS);
+      try {
+         window.localStorage.removeItem(TASKS_STORAGE_KEY);
+         window.localStorage.removeItem(AGENDAS_STORAGE_KEY);
+      } catch {
+         // Ignore
+      }
+      if (isSupabaseConfigured()) {
+         await syncAllTasksToSupabase(INITIAL_CLASS_TASKS);
+      }
+   };
 
    const filteredTasks = React.useMemo(() => {
       if (statusFilter === "all") return tasks;
@@ -181,18 +383,26 @@ export function ClassTasksAgendaBoard({
    );
 
    const handleToggleTaskStatus = (taskId: string) => {
-      setTasks((prev) =>
-         prev.map((item) => {
-            if (item.id !== taskId) return item;
-            const nextStatus: TaskStatus =
-               item.status === "completed" ? "in_progress" : "completed";
-            return {
-               ...item,
-               status: nextStatus,
-               progressPct: nextStatus === "completed" ? 100 : 80,
-            };
-         })
-      );
+      let toggledItem: ClassTaskItem | null = null;
+      const nextTasks = tasks.map((item) => {
+         if (item.id !== taskId) return item;
+         const nextStatus: TaskStatus =
+            item.status === "completed" ? "in_progress" : "completed";
+         const updated: ClassTaskItem = {
+            ...item,
+            status: nextStatus,
+            progressPct: nextStatus === "completed" ? 100 : 80,
+         };
+         toggledItem = updated;
+         return updated;
+      });
+
+      persistTasksLocal(nextTasks);
+      if (toggledItem && isSupabaseConfigured()) {
+         void upsertTaskToSupabase(toggledItem).catch(() => {
+            // Abaikan error latar belakang
+         });
+      }
    };
 
    return (
@@ -228,7 +438,10 @@ export function ClassTasksAgendaBoard({
                               { key: "all", label: `Semua (${tasks.length})` },
                               { key: "in_progress", label: "Aktif" },
                               { key: "urgent", label: "Prioritas" },
-                              { key: "completed", label: `Selesai (${completedCount})` },
+                              {
+                                 key: "completed",
+                                 label: `Selesai (${completedCount})`,
+                              },
                            ] as const
                         ).map((tab) => {
                            const active = statusFilter === tab.key;
@@ -251,10 +464,24 @@ export function ClassTasksAgendaBoard({
                      {isAdmin && (
                         <button
                            type="button"
-                           onClick={onOpenAdminTaskModal ?? openLoginModal}
+                           onClick={() => {
+                              if (onOpenAdminTaskModal) {
+                                 onOpenAdminTaskModal();
+                              } else {
+                                 setIsTaskModalOpen(true);
+                              }
+                           }}
                            className="obsidian-pill inline-flex items-center gap-1 rounded-xl border-emerald-400/45 bg-emerald-500/15 px-2.5 py-1.5 text-[11px] font-semibold text-emerald-700 dark:text-emerald-200 whitespace-nowrap">
                            <Plus className="h-3.5 w-3.5" />
-                           <span>Tugas</span>
+                           <span>Kelola Tugas</span>
+                        </button>
+                     )}
+                     {!isAdmin && onOpenAdminTaskModal && (
+                        <button
+                           type="button"
+                           onClick={openLoginModal}
+                           className="sr-only">
+                           Login Admin
                         </button>
                      )}
                   </div>
@@ -285,7 +512,9 @@ export function ClassTasksAgendaBoard({
 
                                  <button
                                     type="button"
-                                    onClick={() => handleToggleTaskStatus(task.id)}
+                                    onClick={() =>
+                                       handleToggleTaskStatus(task.id)
+                                    }
                                     title="Klik untuk ubah status selesai/aktif"
                                     className={`inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[9px] font-bold transition ${
                                        isDone
@@ -397,13 +626,13 @@ export function ClassTasksAgendaBoard({
                   </div>
 
                   <span className="mono-tabular rounded-lg border border-indigo-400/35 bg-indigo-500/15 px-2.5 py-1 text-[10px] font-bold text-indigo-700 dark:text-indigo-200 shrink-0">
-                     6 AGENDA
+                     {agendas.length} AGENDA
                   </span>
                </div>
 
                {/* Grid Agenda: WAJIB Card Grid 2 Kolom di HP (grid-cols-2) */}
                <div className="mt-4 grid grid-cols-2 gap-2.5">
-                  {initialAgendas.map((event) => (
+                  {agendas.map((event) => (
                      <div
                         key={event.id}
                         className={`obsidian-pill flex flex-col justify-between rounded-xl p-3 transition-all duration-200 ${
@@ -448,7 +677,9 @@ export function ClassTasksAgendaBoard({
             <div className="obsidian-pill mt-4 flex items-center justify-between gap-3 rounded-xl px-3.5 py-2.5 text-xs">
                <span className="inline-flex items-center gap-1.5 font-medium text-muted-foreground truncate">
                   <Sparkles className="h-3.5 w-3.5 text-amber-500 dark:text-amber-300 shrink-0" />
-                  <span className="truncate">Puncak Seremoni & Kapsul Kado 3D</span>
+                  <span className="truncate">
+                     Puncak Seremoni & Kapsul Kado 3D
+                  </span>
                </span>
                <a
                   href="#farewell-gift-section"
@@ -457,6 +688,21 @@ export function ClassTasksAgendaBoard({
                </a>
             </div>
          </div>
+
+         {/* =================================================================
+          3. MODAL ADMIN CRUD TUGAS & AGENDA KELULUSAN
+         ================================================================= */}
+         <TasksCrudModal
+            isOpen={isTaskModalOpen}
+            onClose={() => setIsTaskModalOpen(false)}
+            tasks={tasks}
+            agendas={agendas}
+            onSaveTask={handleSaveSingleTask}
+            onDeleteTask={handleDeleteSingleTask}
+            onSaveAgendas={handleSaveAgendas}
+            onResetDefault={handleResetDefault}
+            onSyncTasksToSupabase={() => syncAllTasksToSupabase(tasks)}
+         />
       </div>
    );
 }

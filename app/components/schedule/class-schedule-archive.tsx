@@ -16,6 +16,11 @@ import {
    type ClassStudent,
 } from "@/app/types/class-system";
 import { useClassAuth } from "../auth/class-auth-provider";
+import { ScheduleCrudModal } from "../admin/schedule-crud-modal";
+import {
+   getSupabaseBrowserClient,
+   isSupabaseConfigured,
+} from "@/lib/supabase/client";
 
 export type SchoolDayName =
    | "Senin"
@@ -43,7 +48,11 @@ export interface DayPiketConfig {
    absenList: number[];
 }
 
-export const SCHOOL_DAYS: { day: SchoolDayName; short: string; absenRange: string }[] = [
+export const SCHOOL_DAYS: {
+   day: SchoolDayName;
+   short: string;
+   absenRange: string;
+}[] = [
    { day: "Senin", short: "SEN", absenRange: "#01–#04" },
    { day: "Selasa", short: "SEL", absenRange: "#05–#08" },
    { day: "Rabu", short: "RAB", absenRange: "#09–#12" },
@@ -166,7 +175,7 @@ export const INITIAL_CLASS_SCHEDULES: ScheduleSubjectItem[] = [
       subjectName: "Produk Kreatif & Kewirausahaan",
       category: "produktif",
       roomOrNote: "R. Inkubator",
-      teacherOrFocus: "Manajemen Produk SaaS &Pitch Deck",
+      teacherOrFocus: "Manajemen Produk SaaS & Pitch Deck",
    },
    {
       id: "wed-4",
@@ -345,6 +354,9 @@ export const INITIAL_PIKET_GROUPS: DayPiketConfig[] = [
    },
 ];
 
+const SCHEDULES_STORAGE_KEY = "pplg1-schedules-v1";
+const PIKET_STORAGE_KEY = "pplg1-piket-v1";
+
 interface ClassScheduleArchiveProps {
    students?: ClassStudent[];
    schedules?: ScheduleSubjectItem[];
@@ -353,17 +365,23 @@ interface ClassScheduleArchiveProps {
 
 export function ClassScheduleArchive({
    students = INITIAL_PPLG1_STUDENTS,
-   schedules = INITIAL_CLASS_SCHEDULES,
+   schedules: initialSchedulesProp = INITIAL_CLASS_SCHEDULES,
    onOpenAdminScheduleModal,
 }: ClassScheduleArchiveProps) {
    const { isAdmin, openLoginModal } = useClassAuth();
+   const [schedulesList, setSchedulesList] =
+      React.useState<ScheduleSubjectItem[]>(initialSchedulesProp);
+   const [piketGroups, setPiketGroups] =
+      React.useState<DayPiketConfig[]>(INITIAL_PIKET_GROUPS);
+
    const [selectedDay, setSelectedDay] = React.useState<SchoolDayName>("Senin");
    const [todayName, setTodayName] = React.useState<SchoolDayName | null>(null);
    const [categoryFilter, setCategoryFilter] = React.useState<
       "all" | "produktif" | "umum"
    >("all");
+   const [isScheduleModalOpen, setIsScheduleModalOpen] = React.useState(false);
 
-   // Deteksi hari aktif WIB secara otomatis saat komponen dimuat
+   // 1. Deteksi hari aktif WIB secara otomatis saat komponen dimuat
    React.useEffect(() => {
       try {
          const dayStr = new Intl.DateTimeFormat("id-ID", {
@@ -383,22 +401,233 @@ export function ClassScheduleArchive({
       }
    }, []);
 
+   // 2. Muat data jadwal & piket dari localStorage + Supabase public.schedules
+   React.useEffect(() => {
+      let isMounted = true;
+
+      try {
+         const savedSchedules = window.localStorage.getItem(
+            SCHEDULES_STORAGE_KEY
+         );
+         if (savedSchedules) {
+            const parsed = JSON.parse(savedSchedules) as ScheduleSubjectItem[];
+            if (Array.isArray(parsed) && parsed.length > 0 && isMounted) {
+               setSchedulesList(parsed);
+            }
+         }
+
+         const savedPiket = window.localStorage.getItem(PIKET_STORAGE_KEY);
+         if (savedPiket) {
+            const parsedPiket = JSON.parse(savedPiket) as DayPiketConfig[];
+            if (
+               Array.isArray(parsedPiket) &&
+               parsedPiket.length > 0 &&
+               isMounted
+            ) {
+               setPiketGroups(parsedPiket);
+            }
+         }
+      } catch {
+         // Abaikan bila localStorage tidak tersedia
+      }
+
+      async function fetchSchedulesFromSupabase() {
+         if (!isSupabaseConfigured()) return;
+         const supabase = getSupabaseBrowserClient();
+         if (!supabase) return;
+
+         const { data, error } = await supabase
+            .from("schedules")
+            .select("*");
+
+         if (error || !data || data.length === 0 || !isMounted) return;
+
+         const loadedLessons: ScheduleSubjectItem[] = [];
+         const loadedPiket: DayPiketConfig[] = [];
+
+         for (const row of data) {
+            const dayName = row.day_name as SchoolDayName;
+            if (Array.isArray(row.lessons)) {
+               for (const lesson of row.lessons) {
+                  loadedLessons.push({
+                     id: String(lesson.id ?? `${dayName}-${Math.random()}`),
+                     day: dayName,
+                     slotCode: String(lesson.slotCode ?? "JAM 01–02"),
+                     timeRange: String(lesson.timeRange ?? "07:00 – 08:30"),
+                     subjectName: String(
+                        lesson.subjectName ?? "Mata Pelajaran PPLG"
+                     ),
+                     category:
+                        lesson.category === "umum" ? "umum" : "produktif",
+                     roomOrNote: String(lesson.roomOrNote ?? "Lab RPL 1"),
+                     teacherOrFocus: String(
+                        lesson.teacherOrFocus ?? "Materi XII PPLG 1"
+                     ),
+                  });
+               }
+            }
+
+            if (Array.isArray(row.piket_members)) {
+               loadedPiket.push({
+                  day: dayName,
+                  shortCode: String(row.piket_group_code ?? "REGU PIKET"),
+                  zoneFocus: String(
+                     row.piket_target_area ?? "Lab RPL & Ruang XII PPLG 1"
+                  ),
+                  absenList: row.piket_members
+                     .map((n: unknown) => Number(n))
+                     .filter((n: number) => !Number.isNaN(n)),
+               });
+            }
+         }
+
+         if (loadedLessons.length > 0 && isMounted) {
+            setSchedulesList(loadedLessons);
+            try {
+               window.localStorage.setItem(
+                  SCHEDULES_STORAGE_KEY,
+                  JSON.stringify(loadedLessons)
+               );
+            } catch {
+               // Ignore
+            }
+         }
+
+         if (loadedPiket.length > 0 && isMounted) {
+            const mergedPiket = INITIAL_PIKET_GROUPS.map(
+               (def) => loadedPiket.find((p) => p.day === def.day) ?? def
+            );
+            setPiketGroups(mergedPiket);
+            try {
+               window.localStorage.setItem(
+                  PIKET_STORAGE_KEY,
+                  JSON.stringify(mergedPiket)
+               );
+            } catch {
+               // Ignore
+            }
+         }
+      }
+
+      fetchSchedulesFromSupabase();
+
+      return () => {
+         isMounted = false;
+      };
+   }, []);
+
+   // Helper untuk menyinkronkan jadwal 6 hari ke tabel public.schedules
+   const syncSchedulesToSupabase = React.useCallback(
+      async (
+         targetSchedules: ScheduleSubjectItem[],
+         targetPiketGroups: DayPiketConfig[]
+      ) => {
+         if (!isSupabaseConfigured()) return;
+         const supabase = getSupabaseBrowserClient();
+         if (!supabase) return;
+
+         const rowsPayload = SCHOOL_DAYS.map((dayMeta) => {
+            const lessonsForDay = targetSchedules.filter(
+               (s) => s.day === dayMeta.day
+            );
+            const piketForDay =
+               targetPiketGroups.find((p) => p.day === dayMeta.day) ??
+               INITIAL_PIKET_GROUPS.find((p) => p.day === dayMeta.day) ??
+               INITIAL_PIKET_GROUPS[0];
+
+            const coordinatorStudent = students.find(
+               (st) => st.absen === piketForDay.absenList[0]
+            );
+
+            return {
+               id: `day-${dayMeta.day.toLowerCase()}`,
+               day_name: dayMeta.day,
+               day_code: dayMeta.short,
+               focus_theme:
+                  lessonsForDay[0]?.subjectName ?? "Produktif XII PPLG 1",
+               room_summary: lessonsForDay[0]?.roomOrNote ?? "Lab RPL 1",
+               lessons: lessonsForDay,
+               piket_group_code: piketForDay.shortCode,
+               piket_coordinator:
+                  coordinatorStudent?.name ?? "Koordinator Regu",
+               piket_target_area: piketForDay.zoneFocus,
+               piket_members: piketForDay.absenList,
+               updated_at: new Date().toISOString(),
+            };
+         });
+
+         const { error } = await supabase
+            .from("schedules")
+            .upsert(rowsPayload, { onConflict: "id" });
+
+         if (error) {
+            throw new Error(error.message);
+         }
+      },
+      [students]
+   );
+
+   const handleSaveSchedulesAndPiket = async (
+      nextSchedules: ScheduleSubjectItem[],
+      nextPiketGroups: DayPiketConfig[]
+   ) => {
+      setSchedulesList(nextSchedules);
+      setPiketGroups(nextPiketGroups);
+
+      try {
+         window.localStorage.setItem(
+            SCHEDULES_STORAGE_KEY,
+            JSON.stringify(nextSchedules)
+         );
+         window.localStorage.setItem(
+            PIKET_STORAGE_KEY,
+            JSON.stringify(nextPiketGroups)
+         );
+      } catch {
+         // Ignore
+      }
+
+      if (isSupabaseConfigured()) {
+         await syncSchedulesToSupabase(nextSchedules, nextPiketGroups);
+      }
+   };
+
+   const handleResetDefault = async () => {
+      setSchedulesList(INITIAL_CLASS_SCHEDULES);
+      setPiketGroups(INITIAL_PIKET_GROUPS);
+
+      try {
+         window.localStorage.removeItem(SCHEDULES_STORAGE_KEY);
+         window.localStorage.removeItem(PIKET_STORAGE_KEY);
+      } catch {
+         // Ignore
+      }
+
+      if (isSupabaseConfigured()) {
+         await syncSchedulesToSupabase(
+            INITIAL_CLASS_SCHEDULES,
+            INITIAL_PIKET_GROUPS
+         );
+      }
+   };
+
    const daySubjects = React.useMemo(() => {
-      return schedules.filter((item) => {
+      return schedulesList.filter((item) => {
          if (item.day !== selectedDay) return false;
          if (categoryFilter !== "all" && item.category !== categoryFilter) {
             return false;
          }
          return true;
       });
-   }, [schedules, selectedDay, categoryFilter]);
+   }, [schedulesList, selectedDay, categoryFilter]);
 
    const activePiketGroup = React.useMemo(() => {
       return (
+         piketGroups.find((g) => g.day === selectedDay) ??
          INITIAL_PIKET_GROUPS.find((g) => g.day === selectedDay) ??
          INITIAL_PIKET_GROUPS[0]
       );
-   }, [selectedDay]);
+   }, [piketGroups, selectedDay]);
 
    const piketStudents = React.useMemo(() => {
       return activePiketGroup.absenList
@@ -435,7 +664,12 @@ export function ClassScheduleArchive({
                   Jadwal Produktif PPLG & Regu Piket Harian
                </h2>
                <p className="mt-1 text-xs sm:text-sm text-muted-foreground">
-                  Disusun dalam format <strong className="font-semibold text-foreground">Card Grid 2 Kolom</strong> yang ringkas untuk layar HP maupun desktop. Klik nama petugas piket untuk melihat ID Card 3D-nya.
+                  Disusun dalam format{" "}
+                  <strong className="font-semibold text-foreground">
+                     Card Grid 2 Kolom
+                  </strong>{" "}
+                  yang ringkas untuk layar HP maupun desktop. Klik nama petugas
+                  piket untuk melihat ID Card 3D-nya.
                </p>
             </div>
 
@@ -472,10 +706,24 @@ export function ClassScheduleArchive({
                {isAdmin && (
                   <button
                      type="button"
-                     onClick={onOpenAdminScheduleModal ?? openLoginModal}
+                     onClick={() => {
+                        if (onOpenAdminScheduleModal) {
+                           onOpenAdminScheduleModal();
+                        } else {
+                           setIsScheduleModalOpen(true);
+                        }
+                     }}
                      className="obsidian-pill inline-flex items-center gap-1.5 rounded-xl border-emerald-400/45 bg-emerald-500/15 px-3 py-1.5 text-xs font-semibold text-emerald-700 dark:text-emerald-200 whitespace-nowrap">
                      <Sparkles className="h-3.5 w-3.5" />
-                     <span>Kelola Jadwal</span>
+                     <span>Kelola Jadwal & Piket</span>
+                  </button>
+               )}
+               {!isAdmin && onOpenAdminScheduleModal && (
+                  <button
+                     type="button"
+                     onClick={openLoginModal}
+                     className="sr-only">
+                     Login Admin
                   </button>
                )}
             </div>
@@ -489,6 +737,13 @@ export function ClassScheduleArchive({
             {SCHOOL_DAYS.map((item) => {
                const isSelected = selectedDay === item.day;
                const isToday = todayName === item.day;
+               const dayPiket = piketGroups.find((g) => g.day === item.day);
+               const dynamicAbsenRange =
+                  dayPiket && dayPiket.absenList.length > 0
+                     ? `#${String(dayPiket.absenList[0]).padStart(2, "0")}–#${String(
+                          dayPiket.absenList[dayPiket.absenList.length - 1]
+                       ).padStart(2, "0")}`
+                     : item.absenRange;
 
                return (
                   <button
@@ -523,7 +778,7 @@ export function ClassScheduleArchive({
                      </span>
 
                      <span className="mono-tabular mt-0.5 text-[10px] text-muted-foreground">
-                        Piket {item.absenRange}
+                        Piket {dynamicAbsenRange}
                      </span>
                   </button>
                );
@@ -655,6 +910,23 @@ export function ClassScheduleArchive({
                })}
             </div>
          </div>
+
+         {/* =================================================================
+          4. MODAL ADMIN CRUD JADWAL & PIKET HARIAN
+         ================================================================= */}
+         <ScheduleCrudModal
+            isOpen={isScheduleModalOpen}
+            onClose={() => setIsScheduleModalOpen(false)}
+            schedules={schedulesList}
+            piketGroups={piketGroups}
+            students={students}
+            initialSelectedDay={selectedDay}
+            onSaveSchedulesAndPiket={handleSaveSchedulesAndPiket}
+            onResetDefault={handleResetDefault}
+            onSyncAllToSupabase={() =>
+               syncSchedulesToSupabase(schedulesList, piketGroups)
+            }
+         />
       </div>
    );
 }
