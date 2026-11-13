@@ -11,6 +11,7 @@ import {
    Users,
 } from "lucide-react";
 import { AdminAccessButton } from "../auth/admin-login-modal";
+import { CommandPaletteTrigger } from "../command/command-palette";
 import { ThemeSwitcher } from "../theme/theme-switcher";
 
 export interface NavSectionItem {
@@ -154,9 +155,9 @@ export function ClassNavigationShell({ children }: ClassNavigationShellProps) {
             aria-label="Navigasi Utama Kelas"
             className="hidden lg:fixed lg:inset-y-4 lg:left-4 lg:z-40 lg:flex lg:w-60 lg:flex-col">
             <div className="obsidian-surface flex h-full flex-col justify-between p-4">
-               {/* Bagian Atas: Identitas Kelas & Jam WIB */}
-               <div className="flex flex-col gap-4">
-                  <div className="flex items-center justify-between gap-2 border-b border-[var(--color-border)] pb-3.5">
+               {/* Bagian Atas: Identitas Kelas, Jam WIB & Tombol Ctrl+K */}
+               <div className="flex flex-col gap-3.5">
+                  <div className="flex items-center justify-between gap-2 border-b border-[var(--color-border)] pb-3">
                      <a
                         href="#hero-section"
                         onClick={(e) => {
@@ -187,6 +188,9 @@ export function ClassNavigationShell({ children }: ClassNavigationShellProps) {
                         {wibTime}
                      </span>
                   </div>
+
+                  {/* Quick Command Palette Trigger (Ctrl + K) */}
+                  <CommandPaletteTrigger variant="rail" />
 
                   {/* Daftar Menu Navigasi Utama */}
                   <nav aria-label="Menu Section Kelas" className="flex flex-col gap-1">
@@ -242,8 +246,8 @@ export function ClassNavigationShell({ children }: ClassNavigationShellProps) {
                   </nav>
 
                   {/* Ringkasan Divisi Teknis */}
-                  <div className="mt-1 border-t border-[var(--color-border)] pt-3.5">
-                     <div className="flex items-center justify-between px-2 pb-2">
+                  <div className="border-t border-[var(--color-border)] pt-3">
+                     <div className="flex items-center justify-between px-2 pb-1.5">
                         <span className="text-[10px] font-semibold tracking-wider text-muted-foreground uppercase">
                            4 Divisi Teknis
                         </span>
@@ -251,7 +255,7 @@ export function ClassNavigationShell({ children }: ClassNavigationShellProps) {
                            22 Siswa
                         </span>
                      </div>
-                     <div className="flex flex-col gap-1.5 px-1">
+                     <div className="flex flex-col gap-1 px-1">
                         {DIVISION_SUMMARY.map((div) => (
                            <div
                               key={div.name}
@@ -269,8 +273,8 @@ export function ClassNavigationShell({ children }: ClassNavigationShellProps) {
                   </div>
                </div>
 
-               {/* Bagian Bawah: Pengatur Tema & Tombol Khusus Admin Login (Fase 4) */}
-               <div className="flex flex-col gap-2.5 border-t border-[var(--color-border)] pt-3.5">
+               {/* Bagian Bawah: Pengatur Tema & Tombol Khusus Admin Login */}
+               <div className="flex flex-col gap-2.5 border-t border-[var(--color-border)] pt-3">
                   <div className="flex items-center justify-between gap-2 px-1">
                      <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground">
                         <Code2 className="h-3.5 w-3.5 text-sky-500 dark:text-sky-400" />
@@ -286,7 +290,7 @@ export function ClassNavigationShell({ children }: ClassNavigationShellProps) {
          </aside>
 
          {/* =================================================================
-          2. MOBILE COMPACT TOP BAR (< 1024px) DENGAN TOMBOL ADMIN LOGIN
+          2. MOBILE COMPACT TOP BAR (< 1024px) DENGAN PENCARIAN & ADMIN LOGIN
          ================================================================= */}
          <header className="sticky top-0 z-30 flex items-center justify-between gap-2 border-b border-[var(--color-border)] bg-[var(--color-card)] px-3.5 py-2.5 backdrop-blur-xl lg:hidden">
             <a
@@ -310,6 +314,7 @@ export function ClassNavigationShell({ children }: ClassNavigationShellProps) {
             </a>
 
             <div className="flex items-center gap-1.5 shrink-0">
+               <CommandPaletteTrigger variant="mobile" />
                <AdminAccessButton variant="mobile" />
                <ThemeSwitcher variant="icon" className="h-8 w-8 rounded-lg" />
             </div>

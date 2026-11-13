@@ -9,6 +9,7 @@ import { AdminAccessButton } from "./components/auth/admin-login-modal";
 import { useClassAuth } from "./components/auth/class-auth-provider";
 import { BentoHeroTelemetry } from "./components/bento/bento-hero-telemetry";
 import { ClassActivityWidgets } from "./components/bento/class-activity-widgets";
+import { CommandPaletteTrigger } from "./components/command/command-palette";
 import { ClassNavigationShell } from "./components/navigation/class-navigation-shell";
 import { ThemeSwitcher } from "./components/theme/theme-switcher";
 
@@ -19,7 +20,7 @@ export default function Home() {
       <ClassNavigationShell>
          <main className="mx-auto flex w-full max-w-6xl flex-col gap-14 px-4 py-6 sm:px-6 lg:px-8">
             {/* =====================================================================
-             0. DESKTOP TOP CONTEXT BAR (BREADCRUMB, STATUS ADMIN & THEME SWITCHER)
+             0. DESKTOP TOP CONTEXT BAR (BREADCRUMB, SEARCH CTRL+K, ADMIN & THEME)
             ===================================================================== */}
             <div className="hidden lg:flex items-center justify-between gap-4">
                <div className="flex items-center gap-2.5 text-xs text-muted-foreground">
@@ -33,6 +34,7 @@ export default function Home() {
                </div>
 
                <div className="flex items-center gap-2.5">
+                  <CommandPaletteTrigger variant="topbar" />
                   <AdminAccessButton variant="topbar" />
                   <ThemeSwitcher variant="pill" />
                </div>
