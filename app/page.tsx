@@ -9,6 +9,7 @@ import { ClassActivityWidgets } from "./components/bento/class-activity-widgets"
 import { CommandPaletteTrigger } from "./components/command/command-palette";
 import { FarewellStageSection } from "./components/farewell/farewell-stage-section";
 import { ClassProjectGallery } from "./components/gallery/class-project-gallery";
+import { ClassFooterCredits } from "./components/navigation/class-footer-credits";
 import { ClassNavigationShell } from "./components/navigation/class-navigation-shell";
 import { ClassScheduleArchive } from "./components/schedule/class-schedule-archive";
 import { ClassTasksAgendaBoard } from "./components/schedule/class-tasks-agenda-board";
@@ -145,6 +146,11 @@ export default function Home() {
                className="scroll-mt-16 lg:scroll-mt-6">
                <FarewellStageSection />
             </section>
+
+            {/* =====================================================================
+             6. FOOTER DEDIKASI & STATUS ARSIP DIGITAL XII PPLG 1 — 2026 (FASE 20)
+            ===================================================================== */}
+            <ClassFooterCredits />
          </main>
       </ClassNavigationShell>
    );
