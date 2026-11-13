@@ -1,0 +1,6 @@
+{
+  "name": "XII PPLG 1 — Class of 2026",
+  "description": "Arsip digital, direktori interaktif 22 developer, bento dashboard kelas, dan kapsul memori kelulusan 3D XII PPLG 1.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
