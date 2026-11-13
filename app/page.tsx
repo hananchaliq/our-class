@@ -8,6 +8,7 @@ import { MemoryPhotoCube3D, VinylDisc3D } from "./components/3d/memory-props-3d"
 import { AdminAccessButton } from "./components/auth/admin-login-modal";
 import { useClassAuth } from "./components/auth/class-auth-provider";
 import { BentoHeroTelemetry } from "./components/bento/bento-hero-telemetry";
+import { ClassActivityWidgets } from "./components/bento/class-activity-widgets";
 import { ClassNavigationShell } from "./components/navigation/class-navigation-shell";
 import { ThemeSwitcher } from "./components/theme/theme-switcher";
 
@@ -38,10 +39,11 @@ export default function Home() {
             </div>
 
             {/* =====================================================================
-             1. BENTO HERO & LIVE CLASS TELEMETRY (FASE 5)
+             1. BENTO HERO, LIVE TELEMETRY & INTERACTIVE ACTIVITY WIDGETS (FASE 5 & 6)
             ===================================================================== */}
-            <section id="hero-section" className="scroll-mt-6">
+            <section id="hero-section" className="flex scroll-mt-6 flex-col gap-4">
                <BentoHeroTelemetry />
+               <ClassActivityWidgets />
             </section>
 
             {/* =====================================================================
