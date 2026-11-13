@@ -1,20 +1,24 @@
 "use client";
 
 import * as React from "react";
-import { ArrowDown, CalendarClock, FolderGit2, Gift } from "lucide-react";
+import { ArrowDown, CalendarClock, FolderGit2, Gift, ShieldCheck } from "lucide-react";
 import { ClassLanyardShowcase } from "./components/3d/class-lanyard-showcase";
 import { FarewellGiftBox3D } from "./components/3d/farewell-gift-box-3d";
 import { GraduationCap3D, TechKeycap3D } from "./components/3d/hero-props-3d";
 import { MemoryPhotoCube3D, VinylDisc3D } from "./components/3d/memory-props-3d";
+import { AdminAccessButton } from "./components/auth/admin-login-modal";
+import { useClassAuth } from "./components/auth/class-auth-provider";
 import { ClassNavigationShell } from "./components/navigation/class-navigation-shell";
 import { ThemeSwitcher } from "./components/theme/theme-switcher";
 
 export default function Home() {
+   const { isAdmin, openLoginModal } = useClassAuth();
+
    return (
       <ClassNavigationShell>
          <main className="mx-auto flex w-full max-w-6xl flex-col gap-14 px-4 py-6 sm:px-6 lg:px-8">
             {/* =====================================================================
-             0. DESKTOP TOP CONTEXT BAR (BREADCRUMB TEKNIS & THEME SWITCHER)
+             0. DESKTOP TOP CONTEXT BAR (BREADCRUMB, STATUS ADMIN & THEME SWITCHER)
             ===================================================================== */}
             <div className="hidden lg:flex items-center justify-between gap-4">
                <div className="flex items-center gap-2.5 text-xs text-muted-foreground">
@@ -27,7 +31,10 @@ export default function Home() {
                   <span className="mono-tabular">Angkatan 2026</span>
                </div>
 
-               <ThemeSwitcher variant="pill" />
+               <div className="flex items-center gap-2.5">
+                  <AdminAccessButton variant="topbar" />
+                  <ThemeSwitcher variant="pill" />
+               </div>
             </div>
 
             {/* =====================================================================
@@ -38,10 +45,19 @@ export default function Home() {
                className="obsidian-surface relative scroll-mt-6 overflow-hidden p-6 sm:p-8 md:p-12">
                <div className="flex flex-col items-center justify-between gap-10 lg:flex-row">
                   <div className="max-w-xl text-center lg:text-left">
-                     <div className="inline-flex items-center gap-2 text-xs font-medium text-sky-600 dark:text-sky-300">
+                     <div className="inline-flex flex-wrap items-center justify-center lg:justify-start gap-2 text-xs font-medium text-sky-600 dark:text-sky-300">
                         <span className="mono-tabular tracking-widest">
                            XII PPLG 1 · ANGKATAN 2026
                         </span>
+                        {isAdmin && (
+                           <button
+                              type="button"
+                              onClick={openLoginModal}
+                              className="inline-flex items-center gap-1 rounded-md border border-emerald-400/40 bg-emerald-500/15 px-2 py-0.5 text-[11px] font-semibold text-emerald-700 dark:text-emerald-300">
+                              <ShieldCheck className="h-3 w-3" />
+                              <span>Admin Active</span>
+                           </button>
+                        )}
                      </div>
                      <h1 className="mt-4 text-3xl font-bold tracking-tight text-foreground sm:text-5xl text-balance">
                         22 Baris Logika,{" "}
@@ -161,9 +177,9 @@ export default function Home() {
                      <VinylDisc3D />
                   </div>
 
-                  {/* Tengah: Kado 3D Utama */}
+                  {/* Tengah: Kado 3D Utama (Mode Edit Terbuka Saat Admin Active) */}
                   <div className="flex justify-center">
-                     <FarewellGiftBox3D canEdit={true} />
+                     <FarewellGiftBox3D canEdit={isAdmin} />
                   </div>
 
                   {/* Kanan: Kubus Foto Momen 3D */}

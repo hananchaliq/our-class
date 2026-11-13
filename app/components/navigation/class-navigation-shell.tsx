@@ -7,10 +7,10 @@ import {
    FolderGit2,
    Gift,
    LayoutDashboard,
-   Sparkles,
    Terminal,
    Users,
 } from "lucide-react";
+import { AdminAccessButton } from "../auth/admin-login-modal";
 import { ThemeSwitcher } from "../theme/theme-switcher";
 
 export interface NavSectionItem {
@@ -241,7 +241,7 @@ export function ClassNavigationShell({ children }: ClassNavigationShellProps) {
                      })}
                   </nav>
 
-                  {/* Ringkasan Divisi Teknis (Terinspirasi Panel Active Assets pada Referensi) */}
+                  {/* Ringkasan Divisi Teknis */}
                   <div className="mt-1 border-t border-[var(--color-border)] pt-3.5">
                      <div className="flex items-center justify-between px-2 pb-2">
                         <span className="text-[10px] font-semibold tracking-wider text-muted-foreground uppercase">
@@ -269,57 +269,48 @@ export function ClassNavigationShell({ children }: ClassNavigationShellProps) {
                   </div>
                </div>
 
-               {/* Bagian Bawah: Pengatur Tema & Slot Admin (Fase 4) */}
+               {/* Bagian Bawah: Pengatur Tema & Tombol Khusus Admin Login (Fase 4) */}
                <div className="flex flex-col gap-2.5 border-t border-[var(--color-border)] pt-3.5">
-                  <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center justify-between gap-2 px-1">
                      <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground">
                         <Code2 className="h-3.5 w-3.5 text-sky-500 dark:text-sky-400" />
                         <span>Mode Tampilan</span>
                      </span>
                      <ThemeSwitcher variant="icon" />
                   </div>
-                  <div className="obsidian-pill flex items-center justify-between rounded-xl px-3 py-2 text-[11px] text-muted-foreground">
-                     <span className="inline-flex items-center gap-1.5 truncate">
-                        <Sparkles className="h-3.5 w-3.5 text-indigo-500 dark:text-indigo-400 shrink-0" />
-                        <span className="truncate">Arsip Kelulusan</span>
-                     </span>
-                     <span className="mono-tabular font-semibold text-foreground">v2026</span>
-                  </div>
+
+                  {/* Tombol Khusus Admin Login / Admin Active di Sudut Bawah Left Rail */}
+                  <AdminAccessButton variant="rail" />
                </div>
             </div>
          </aside>
 
          {/* =================================================================
-          2. MOBILE COMPACT TOP BAR (< 1024px)
+          2. MOBILE COMPACT TOP BAR (< 1024px) DENGAN TOMBOL ADMIN LOGIN
          ================================================================= */}
-         <header className="sticky top-0 z-30 flex items-center justify-between gap-3 border-b border-[var(--color-border)] bg-[var(--color-card)] px-4 py-2.5 backdrop-blur-xl lg:hidden">
+         <header className="sticky top-0 z-30 flex items-center justify-between gap-2 border-b border-[var(--color-border)] bg-[var(--color-card)] px-3.5 py-2.5 backdrop-blur-xl lg:hidden">
             <a
                href="#hero-section"
                onClick={(e) => {
                   e.preventDefault();
                   handleNavigate("hero-section");
                }}
-               className="flex items-center gap-2">
+               className="flex items-center gap-2 min-w-0">
                <span className="obsidian-pill flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border-sky-400/35 bg-sky-500/15 text-sky-600 dark:text-sky-300">
                   <Terminal className="h-4 w-4" />
                </span>
-               <div className="flex flex-col">
+               <div className="flex flex-col min-w-0">
                   <span className="text-xs font-bold tracking-tight text-foreground whitespace-nowrap">
                      XII PPLG 1
                   </span>
                   <span className="mono-tabular text-[10px] text-muted-foreground whitespace-nowrap">
-                     CLASS OF 2026
+                     {wibTime} WIB
                   </span>
                </div>
             </a>
 
-            <div className="flex items-center gap-2">
-               <div className="obsidian-pill flex items-center gap-1.5 rounded-lg px-2.5 py-1.5">
-                  <span className="mono-tabular text-[11px] font-semibold text-sky-600 dark:text-sky-300">
-                     {wibTime}
-                  </span>
-                  <span className="text-[10px] text-muted-foreground">WIB</span>
-               </div>
+            <div className="flex items-center gap-1.5 shrink-0">
+               <AdminAccessButton variant="mobile" />
                <ThemeSwitcher variant="icon" className="h-8 w-8 rounded-lg" />
             </div>
          </header>

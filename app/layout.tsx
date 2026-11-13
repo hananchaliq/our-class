@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { Plus_Jakarta_Sans, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
+import { AdminLoginModal } from "./components/auth/admin-login-modal";
+import { ClassAuthProvider } from "./components/auth/class-auth-provider";
 import { ThemeProvider } from "./components/theme/theme-provider";
 
 const plusJakarta = Plus_Jakarta_Sans({
@@ -75,20 +77,25 @@ export default function RootLayout({
             suppressHydrationWarning
             className={`${plusJakarta.className} obsidian-ambient-canvas relative min-h-full flex flex-col text-foreground selection:bg-sky-500/25 selection:text-sky-600 dark:selection:bg-sky-400/25 dark:selection:text-sky-200`}>
             <ThemeProvider>
-               {/* Subtle Swiss-Grid & Film Grain Backdrop Layer (Non-Interactive) */}
-               <div
-                  aria-hidden="true"
-                  className="swiss-grid-overlay pointer-events-none fixed inset-0 z-0"
-               />
-               <div
-                  aria-hidden="true"
-                  className="film-grain-overlay pointer-events-none fixed inset-0 z-0"
-               />
+               <ClassAuthProvider>
+                  {/* Subtle Swiss-Grid & Film Grain Backdrop Layer (Non-Interactive) */}
+                  <div
+                     aria-hidden="true"
+                     className="swiss-grid-overlay pointer-events-none fixed inset-0 z-0"
+                  />
+                  <div
+                     aria-hidden="true"
+                     className="film-grain-overlay pointer-events-none fixed inset-0 z-0"
+                  />
 
-               {/* Main Application Content */}
-               <div className="relative z-10 flex min-h-screen flex-1 flex-col">
-                  {children}
-               </div>
+                  {/* Main Application Content */}
+                  <div className="relative z-10 flex min-h-screen flex-1 flex-col">
+                     {children}
+                  </div>
+
+                  {/* Modal Login 1 Akun Kelas Bersama */}
+                  <AdminLoginModal />
+               </ClassAuthProvider>
             </ThemeProvider>
          </body>
       </html>
