@@ -17,7 +17,12 @@ import {
    UserCheck,
    X,
 } from "lucide-react";
+import { getSupabaseBrowserClient } from "@/lib/supabase/client";
+import { GalleryCrudModal } from "../admin/gallery-crud-modal";
 import { useClassAuth } from "../auth/class-auth-provider";
+
+const PROJECTS_STORAGE_KEY = "pplg1-projects-v1";
+const GALLERY_STORAGE_KEY = "pplg1-gallery-photos-v1";
 
 export type ProjectDivision =
    | "Frontend"
@@ -256,7 +261,12 @@ export function ClassProjectGallery({
    initialGalleryPhotos = INITIAL_CLASS_GALLERY_PHOTOS,
    onOpenAdminGalleryModal,
 }: ClassProjectGalleryProps) {
-   const { isAdmin, openLoginModal } = useClassAuth();
+   const { isAdmin, isSupabaseConnected } = useClassAuth();
+
+   const [projects, setProjects] =
+      React.useState<ClassProjectShowcaseItem[]>(initialProjects);
+   const [photos, setPhotos] =
+      React.useState<ClassGalleryMemoryItem[]>(initialGalleryPhotos);
 
    const [activeView, setActiveView] = React.useState<
       "all" | "projects" | "photos"
@@ -272,8 +282,272 @@ export function ClassProjectGallery({
       "projects" | "photos"
    >("photos");
 
+   // State Modal CRUD Fase 17
+   const [isCrudModalOpen, setIsCrudModalOpen] = React.useState(false);
+   const [isSyncing, setIsSyncing] = React.useState(false);
+
+   // 1. Muat data Project & Galeri Foto dari Supabase (tabel memories) atau localStorage
+   React.useEffect(() => {
+      let isMounted = true;
+
+      const loadGalleryData = async () => {
+         const supabase = getSupabaseBrowserClient();
+
+         if (supabase) {
+            const { data, error } = await supabase
+               .from("memories")
+               .select("*")
+               .in("category", ["pplg_project", "class_gallery"])
+               .order("created_at", { ascending: false });
+
+            if (!error && Array.isArray(data) && data.length > 0 && isMounted) {
+               const dbProjects = data
+                  .filter((r) => r.category === "pplg_project")
+                  .map((r) => ({
+                     id: String(r.id),
+                     code: String(r.code ?? "PRJ-01"),
+                     title: String(r.title),
+                     summary: String(r.description ?? ""),
+                     division:
+                        (r.division as ProjectDivision) ?? "Frontend",
+                     authorName: String(r.author_name ?? "XII PPLG 1"),
+                     authorAbsen: Number(r.author_absen ?? 1),
+                     authorStudentId: String(
+                        r.author_student_id ?? "pplg1-01"
+                     ),
+                     techStack: Array.isArray(r.tech_stack)
+                        ? r.tech_stack
+                        : ["Next.js", "Supabase"],
+                     imageUrl: String(r.image_url),
+                     repoUrl: String(r.repo_url ?? "https://github.com"),
+                     demoUrl: String(r.demo_url ?? ""),
+                     createdAt: String(r.taken_date ?? "2026"),
+                     featured: true,
+                  }));
+
+               const dbPhotos = data
+                  .filter((r) => r.category === "class_gallery")
+                  .map((r) => ({
+                     id: String(r.id),
+                     code: String(r.code ?? "MEM-01"),
+                     title: String(r.title),
+                     description: String(r.description ?? ""),
+                     imageUrl: String(r.image_url),
+                     takenDate: String(r.taken_date ?? "2026"),
+                     location: String(r.location ?? "Lab RPL Utama"),
+                     tag:
+                        (r.tag as ClassGalleryMemoryItem["tag"]) ??
+                        "Angkatan 2026",
+                  }));
+
+               if (dbProjects.length > 0) setProjects(dbProjects);
+               if (dbPhotos.length > 0) setPhotos(dbPhotos);
+               return;
+            }
+         }
+
+         // Fallback localStorage
+         try {
+            const rawPrj = window.localStorage.getItem(PROJECTS_STORAGE_KEY);
+            if (rawPrj && isMounted) {
+               const parsed = JSON.parse(rawPrj) as ClassProjectShowcaseItem[];
+               if (Array.isArray(parsed) && parsed.length > 0) {
+                  setProjects(parsed);
+               }
+            }
+            const rawPho = window.localStorage.getItem(GALLERY_STORAGE_KEY);
+            if (rawPho && isMounted) {
+               const parsed = JSON.parse(rawPho) as ClassGalleryMemoryItem[];
+               if (Array.isArray(parsed) && parsed.length > 0) {
+                  setPhotos(parsed);
+               }
+            }
+         } catch {
+            // Abaikan
+         }
+      };
+
+      loadGalleryData();
+      return () => {
+         isMounted = false;
+      };
+   }, []);
+
+   // 2. Fungsi CRUD Project Karya PPLG (Supabase + Local)
+   const handleSaveProject = async (
+      item: ClassProjectShowcaseItem,
+      isNew: boolean
+   ) => {
+      setIsSyncing(true);
+      const next = isNew
+         ? [item, ...projects]
+         : projects.map((p) => (p.id === item.id ? item : p));
+      setProjects(next);
+      try {
+         window.localStorage.setItem(
+            PROJECTS_STORAGE_KEY,
+            JSON.stringify(next)
+         );
+      } catch {
+         // Abaikan
+      }
+
+      const supabase = getSupabaseBrowserClient();
+      if (supabase) {
+         await supabase.from("memories").upsert(
+            {
+               id: item.id,
+               code: item.code,
+               title: item.title,
+               description: item.summary,
+               image_url: item.imageUrl,
+               taken_date: item.createdAt,
+               location: `Divisi ${item.division}`,
+               category: "pplg_project",
+               division: item.division,
+               author_name: item.authorName,
+               author_absen: item.authorAbsen,
+               author_student_id: item.authorStudentId,
+               tech_stack: item.techStack,
+               repo_url: item.repoUrl,
+               demo_url: item.demoUrl ?? "",
+               tag: item.division,
+            },
+            { onConflict: "id" }
+         );
+      }
+      setIsSyncing(false);
+   };
+
+   const handleDeleteProject = async (projectId: string) => {
+      setIsSyncing(true);
+      const next = projects.filter((p) => p.id !== projectId);
+      setProjects(next);
+      try {
+         window.localStorage.setItem(
+            PROJECTS_STORAGE_KEY,
+            JSON.stringify(next)
+         );
+      } catch {
+         // Abaikan
+      }
+
+      const supabase = getSupabaseBrowserClient();
+      if (supabase) {
+         await supabase.from("memories").delete().eq("id", projectId);
+      }
+      setIsSyncing(false);
+   };
+
+   // 3. Fungsi CRUD Galeri Foto Kelas (Supabase + Local)
+   const handleSavePhoto = async (
+      item: ClassGalleryMemoryItem,
+      isNew: boolean
+   ) => {
+      setIsSyncing(true);
+      const next = isNew
+         ? [item, ...photos]
+         : photos.map((m) => (m.id === item.id ? item : m));
+      setPhotos(next);
+      try {
+         window.localStorage.setItem(GALLERY_STORAGE_KEY, JSON.stringify(next));
+      } catch {
+         // Abaikan
+      }
+
+      const supabase = getSupabaseBrowserClient();
+      if (supabase) {
+         await supabase.from("memories").upsert(
+            {
+               id: item.id,
+               code: item.code,
+               title: item.title,
+               description: item.description,
+               image_url: item.imageUrl,
+               taken_date: item.takenDate,
+               location: item.location,
+               category: "class_gallery",
+               tag: item.tag,
+            },
+            { onConflict: "id" }
+         );
+      }
+      setIsSyncing(false);
+   };
+
+   const handleDeletePhoto = async (photoId: string) => {
+      setIsSyncing(true);
+      const next = photos.filter((m) => m.id !== photoId);
+      setPhotos(next);
+      try {
+         window.localStorage.setItem(GALLERY_STORAGE_KEY, JSON.stringify(next));
+      } catch {
+         // Abaikan
+      }
+
+      const supabase = getSupabaseBrowserClient();
+      if (supabase) {
+         await supabase.from("memories").delete().eq("id", photoId);
+      }
+      setIsSyncing(false);
+   };
+
+   // 4. Sync Semua Project & Galeri ke Supabase
+   const handleSyncAllToSupabase = async () => {
+      const supabase = getSupabaseBrowserClient();
+      if (!supabase) return;
+      setIsSyncing(true);
+
+      const prjRows = projects.map((item) => ({
+         id: item.id,
+         code: item.code,
+         title: item.title,
+         description: item.summary,
+         image_url: item.imageUrl,
+         taken_date: item.createdAt,
+         location: `Divisi ${item.division}`,
+         category: "pplg_project",
+         division: item.division,
+         author_name: item.authorName,
+         author_absen: item.authorAbsen,
+         author_student_id: item.authorStudentId,
+         tech_stack: item.techStack,
+         repo_url: item.repoUrl,
+         demo_url: item.demoUrl ?? "",
+         tag: item.division,
+      }));
+
+      const phoRows = photos.map((item) => ({
+         id: item.id,
+         code: item.code,
+         title: item.title,
+         description: item.description,
+         image_url: item.imageUrl,
+         taken_date: item.takenDate,
+         location: item.location,
+         category: "class_gallery",
+         tag: item.tag,
+      }));
+
+      await supabase
+         .from("memories")
+         .upsert([...prjRows, ...phoRows], { onConflict: "id" });
+      setIsSyncing(false);
+   };
+
+   const handleResetDefaults = async () => {
+      setProjects(INITIAL_PPLG_PROJECTS);
+      setPhotos(INITIAL_CLASS_GALLERY_PHOTOS);
+      try {
+         window.localStorage.removeItem(PROJECTS_STORAGE_KEY);
+         window.localStorage.removeItem(GALLERY_STORAGE_KEY);
+      } catch {
+         // Abaikan
+      }
+   };
+
    const filteredProjects = React.useMemo(() => {
-      return initialProjects.filter((project) => {
+      return projects.filter((project) => {
          const matchesDivision =
             divisionFilter === "Semua" || project.division === divisionFilter;
          const q = searchQuery.trim().toLowerCase();
@@ -285,18 +559,18 @@ export function ClassProjectGallery({
                project.techStack.some((t) => t.toLowerCase().includes(q)))
          );
       });
-   }, [initialProjects, divisionFilter, searchQuery]);
+   }, [projects, divisionFilter, searchQuery]);
 
    const filteredPhotos = React.useMemo(() => {
       const q = searchQuery.trim().toLowerCase();
-      if (!q) return initialGalleryPhotos;
-      return initialGalleryPhotos.filter(
+      if (!q) return photos;
+      return photos.filter(
          (photo) =>
             photo.title.toLowerCase().includes(q) ||
             photo.description.toLowerCase().includes(q) ||
             photo.tag.toLowerCase().includes(q)
       );
-   }, [initialGalleryPhotos, searchQuery]);
+   }, [photos, searchQuery]);
 
    const activeSlides: LightboxSlide[] = React.useMemo(() => {
       if (lightboxSource === "projects") {
@@ -411,19 +685,17 @@ export function ClassProjectGallery({
                            {
                               key: "all",
                               label: "Semua Arsip",
-                              count:
-                                 initialProjects.length +
-                                 initialGalleryPhotos.length,
+                              count: projects.length + photos.length,
                            },
                            {
                               key: "projects",
                               label: "Project Karya",
-                              count: initialProjects.length,
+                              count: projects.length,
                            },
                            {
                               key: "photos",
                               label: "Galeri Foto",
-                              count: initialGalleryPhotos.length,
+                              count: photos.length,
                            },
                         ] as const
                      ).map((tab) => {
@@ -452,10 +724,13 @@ export function ClassProjectGallery({
                   {isAdmin && (
                      <button
                         type="button"
-                        onClick={onOpenAdminGalleryModal ?? openLoginModal}
+                        onClick={() => {
+                           onOpenAdminGalleryModal?.();
+                           setIsCrudModalOpen(true);
+                        }}
                         className="obsidian-pill inline-flex items-center gap-1.5 rounded-xl border-emerald-400/45 bg-emerald-500/15 px-3 py-2 text-xs font-semibold text-emerald-700 dark:text-emerald-200 whitespace-nowrap">
                         <Plus className="h-3.5 w-3.5" />
-                        <span>Karya / Foto</span>
+                        <span>Kelola Karya & Foto (CRUD)</span>
                      </button>
                   )}
                </div>
@@ -845,6 +1120,24 @@ export function ClassProjectGallery({
                </div>
             </div>
          )}
+
+         {/* =====================================================================
+          5. MODAL CRUD GALERI FOTO & PROJECT KARYA PPLG 1 (FASE 17)
+         ===================================================================== */}
+         <GalleryCrudModal
+            isOpen={isCrudModalOpen}
+            projects={projects}
+            photos={photos}
+            isSupabaseConnected={isSupabaseConnected}
+            isSyncing={isSyncing}
+            onClose={() => setIsCrudModalOpen(false)}
+            onSaveProject={handleSaveProject}
+            onDeleteProject={handleDeleteProject}
+            onSavePhoto={handleSavePhoto}
+            onDeletePhoto={handleDeletePhoto}
+            onSyncAllToSupabase={handleSyncAllToSupabase}
+            onResetDefaults={handleResetDefaults}
+         />
       </div>
    );
 }
