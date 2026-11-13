@@ -2,13 +2,11 @@
 
 import * as React from "react";
 import { ClassLanyardShowcase } from "./components/3d/class-lanyard-showcase";
-import { FarewellGiftBox3D } from "./components/3d/farewell-gift-box-3d";
-import { MemoryPhotoCube3D, VinylDisc3D } from "./components/3d/memory-props-3d";
 import { AdminAccessButton } from "./components/auth/admin-login-modal";
-import { useClassAuth } from "./components/auth/class-auth-provider";
 import { BentoHeroTelemetry } from "./components/bento/bento-hero-telemetry";
 import { ClassActivityWidgets } from "./components/bento/class-activity-widgets";
 import { CommandPaletteTrigger } from "./components/command/command-palette";
+import { FarewellStageSection } from "./components/farewell/farewell-stage-section";
 import { ClassProjectGallery } from "./components/gallery/class-project-gallery";
 import { ClassNavigationShell } from "./components/navigation/class-navigation-shell";
 import { ClassScheduleArchive } from "./components/schedule/class-schedule-archive";
@@ -16,8 +14,6 @@ import { ClassTasksAgendaBoard } from "./components/schedule/class-tasks-agenda-
 import { ThemeSwitcher } from "./components/theme/theme-switcher";
 
 export default function Home() {
-   const { isAdmin } = useClassAuth();
-
    return (
       <ClassNavigationShell>
          <main className="mx-auto flex w-full max-w-6xl flex-col gap-14 px-4 py-6 sm:px-6 lg:px-8">
@@ -73,39 +69,10 @@ export default function Home() {
             </section>
 
             {/* =====================================================================
-             5. HALAMAN KHUSUS PERPISAHAN: KADO 3D + VINYL & KUBUS MEMORI
+             5. HALAMAN KHUSUS PERPISAHAN: PANGGUNG KADO 3D + VINYL & KUBUS (FASE 12)
             ===================================================================== */}
-            <section
-               id="farewell-gift-section"
-               className="obsidian-surface scroll-mt-6 p-6 sm:p-8 md:p-12">
-               <div className="mx-auto max-w-2xl text-center">
-                  <span className="mono-tabular text-xs font-semibold tracking-widest text-amber-600 dark:text-amber-300">
-                     GRADUATION CAPSULE · XII PPLG 1
-                  </span>
-                  <h2 className="mt-3 text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
-                     Kado Perpisahan & Ruang Memori Kelas
-                  </h2>
-                  <p className="mt-2 text-sm text-muted-foreground">
-                     Putar kado 3D di bawah ini dan klik untuk membuka album foto kenangan, surat perpisahan, serta quotes teman sekelas.
-                  </p>
-               </div>
-
-               <div className="mt-8 grid grid-cols-1 items-center gap-10 lg:grid-cols-3">
-                  {/* Kiri: Pemutar Vinyl 3D */}
-                  <div className="flex justify-center">
-                     <VinylDisc3D />
-                  </div>
-
-                  {/* Tengah: Kado 3D Utama (Mode Edit Terbuka Saat Admin Active) */}
-                  <div className="flex justify-center">
-                     <FarewellGiftBox3D canEdit={isAdmin} />
-                  </div>
-
-                  {/* Kanan: Kubus Foto Momen 3D */}
-                  <div className="flex justify-center">
-                     <MemoryPhotoCube3D />
-                  </div>
-               </div>
+            <section id="farewell-gift-section" className="scroll-mt-6">
+               <FarewellStageSection />
             </section>
          </main>
       </ClassNavigationShell>
