@@ -1,7 +1,6 @@
 "use client";
 
 import * as React from "react";
-import { FolderGit2 } from "lucide-react";
 import { ClassLanyardShowcase } from "./components/3d/class-lanyard-showcase";
 import { FarewellGiftBox3D } from "./components/3d/farewell-gift-box-3d";
 import { MemoryPhotoCube3D, VinylDisc3D } from "./components/3d/memory-props-3d";
@@ -10,6 +9,7 @@ import { useClassAuth } from "./components/auth/class-auth-provider";
 import { BentoHeroTelemetry } from "./components/bento/bento-hero-telemetry";
 import { ClassActivityWidgets } from "./components/bento/class-activity-widgets";
 import { CommandPaletteTrigger } from "./components/command/command-palette";
+import { ClassProjectGallery } from "./components/gallery/class-project-gallery";
 import { ClassNavigationShell } from "./components/navigation/class-navigation-shell";
 import { ClassScheduleArchive } from "./components/schedule/class-schedule-archive";
 import { ClassTasksAgendaBoard } from "./components/schedule/class-tasks-agenda-board";
@@ -66,30 +66,10 @@ export default function Home() {
             </section>
 
             {/* =====================================================================
-             4. ANCHOR SECTION PROJECT & GALERI (DIPERLUAS PADA FASE 11)
+             4. SECTION KEEMPAT: ETALASE PROJECT PPLG & GALERI FOTO KELAS (FASE 11)
             ===================================================================== */}
-            <section
-               id="gallery-section"
-               className="obsidian-surface scroll-mt-6 p-6 sm:p-8">
-               <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
-                  <div>
-                     <div className="inline-flex items-center gap-2 text-xs font-medium text-indigo-600 dark:text-indigo-300">
-                        <FolderGit2 className="h-3.5 w-3.5" />
-                        <span className="mono-tabular tracking-widest">
-                           SECTION 04 · ETALASE KARYA & MEMORI KELAS
-                        </span>
-                     </div>
-                     <h2 className="mt-2 text-xl font-semibold tracking-tight text-foreground sm:text-2xl">
-                        PPLG Projects Showcase & Galeri Momen Kelas
-                     </h2>
-                     <p className="mt-1 text-xs sm:text-sm text-muted-foreground">
-                        Kumpulan repositori aplikasi web, mobile, gim, serta dokumentasi kenangan angkatan 2026.
-                     </p>
-                  </div>
-                  <span className="mono-tabular text-xs font-semibold text-muted-foreground">
-                     4 DIVISI TEKNIS
-                  </span>
-               </div>
+            <section id="gallery-section" className="scroll-mt-6">
+               <ClassProjectGallery />
             </section>
 
             {/* =====================================================================
